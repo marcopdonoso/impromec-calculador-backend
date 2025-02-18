@@ -17,7 +17,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "postinstall": "npm rebuild bcrypt"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.9",
@@ -28,7 +29,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.9",
     "@nestjs/swagger": "^11.0.3",
-    "bcryptjs": "^3.0.1",
+    "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "mongoose": "^8.10.0",
@@ -43,6 +44,7 @@
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@nestjs/testing": "^11.0.9",
+    "@types/bcrypt": "^5.0.2",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.17.17",
@@ -83,7 +85,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@nestjs/core"
+      "@nestjs/core",
+      "bcrypt"
     ]
   }
 }

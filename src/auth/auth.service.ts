@@ -2,7 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import * as bcrypt from 'bcryptjs';
+import * as bcrypt from 'bcrypt';
 import { Model } from 'mongoose';
 import { RegisterDto } from './dto/register.dto';
 import { User } from './user.schema';
@@ -23,7 +23,8 @@ export class AuthService {
       throw new ConflictException('El correo electrónico ya está registrado');
     }
 
-    const salt = await bcrypt.genSalt(10);
+    const saltRounds = 10;
+    const salt = await bcrypt.genSalt(saltRounds);
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
     const user = new this.userModel({
