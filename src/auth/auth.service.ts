@@ -23,7 +23,8 @@ export class AuthService {
       throw new ConflictException('El correo electrónico ya está registrado');
     }
 
-    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
     const user = new this.userModel({
       ...registerDto,
