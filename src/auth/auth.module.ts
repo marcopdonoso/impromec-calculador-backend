@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PassportModule } from '@nestjs/passport';
+import { MailModule } from 'src/mail/mail.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { LocalStrategy } from './local.strategy';
@@ -21,6 +22,7 @@ import { User, UserSchema } from './user.schema';
       inject: [ConfigService],
     }),
     ConfigModule,
+    MailModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy],

@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
+import { MailService } from 'src/mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { User } from './user.schema';
 
@@ -13,6 +15,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<User>,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private mailService: MailService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<User> {
@@ -27,12 +30,23 @@ export class AuthService {
     const salt = await bcrypt.genSalt(saltRounds);
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
+    const verificationToken = randomBytes(32).toString('hex');
+
     const user = new this.userModel({
       ...registerDto,
       password: hashedPassword,
+      verificationToken,
     });
 
-    return user.save();
+    await user.save();
+
+    await this.mailService.sendVerificationEmail(
+      user.email,
+      user.name,
+      verificationToken,
+    );
+
+    return user;
   }
 
   async validateUser(email: string, password: string): Promise<any> {
