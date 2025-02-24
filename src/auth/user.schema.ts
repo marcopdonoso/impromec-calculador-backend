@@ -41,9 +41,6 @@ export class User extends Document {
   @Prop({ required: true })
   location: string;
 
-  @Prop()
-  verificationToken?: string;
-
   @Prop({ default: false })
   isVerified: boolean;
 }

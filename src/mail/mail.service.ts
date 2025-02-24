@@ -23,7 +23,7 @@ export class MailService {
     return this.resend.emails.send({
       from: 'Impromec Calculador <noreplay@impromec.com>',
       to,
-      subject: 'Confirme su dirección de correo  electrónico',
+      subject: 'Confirme su dirección de correo electrónico',
       html,
     });
   }

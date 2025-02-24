@@ -1,9 +1,12 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
-import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
 import { MailService } from 'src/mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
@@ -30,15 +33,23 @@ export class AuthService {
     const salt = await bcrypt.genSalt(saltRounds);
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
-    const verificationToken = randomBytes(32).toString('hex');
-
     const user = new this.userModel({
       ...registerDto,
       password: hashedPassword,
-      verificationToken,
     });
 
     await user.save();
+
+    const verificationToken = this.jwtService.sign(
+      {
+        email: user.email,
+        id: user._id,
+      },
+      {
+        secret: this.configService.get('JWT_SECRET'),
+        expiresIn: '1d',
+      },
+    );
 
     await this.mailService.sendVerificationEmail(
       user.email,
@@ -47,6 +58,41 @@ export class AuthService {
     );
 
     return user;
+  }
+
+  async verifyEmail(
+    token: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const decoded = this.jwtService.verify(token, {
+        secret: this.configService.get('JWT_SECRET'),
+      });
+
+      const user = await this.userModel.findById(decoded.id);
+
+      if (!user) {
+        throw new BadRequestException('Usuario no encontrado');
+      }
+
+      if (user.isVerified) {
+        return {
+          success: false,
+          message: 'El correo electrónico ya ha sido verificado',
+        };
+      }
+
+      user.isVerified = true;
+      await user.save();
+
+      return {
+        success: true,
+        message: 'Correo electrónico verificado exitosamente',
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        'Token de verificación inválido o expirado',
+      );
+    }
   }
 
   async validateUser(email: string, password: string): Promise<any> {
@@ -73,6 +119,41 @@ export class AuthService {
         secret: this.configService.get('JWT_SECRET'),
         expiresIn: this.configService.get('JWT_EXPIRES_IN'),
       }),
+    };
+  }
+
+  async resendVerificationEmail(user: any) {
+    const existingUser = await this.userModel.findById(user.id);
+
+    if (!existingUser) {
+      throw new BadRequestException('Usuario no encontrado');
+    }
+
+    if (existingUser.isVerified) {
+      throw new BadRequestException(
+        'El correo electrónico ya ha sido verificado',
+      );
+    }
+
+    const newVerificationToken = this.jwtService.sign(
+      {
+        email: existingUser.email,
+        id: existingUser._id,
+      },
+      {
+        secret: this.configService.get('JWT_SECRET'),
+        expiresIn: '1d',
+      },
+    );
+
+    await this.mailService.sendVerificationEmail(
+      existingUser.email,
+      existingUser.name,
+      newVerificationToken,
+    );
+
+    return {
+      message: 'Correo electrónico de verificación reenviado exitosamente',
     };
   }
 }
