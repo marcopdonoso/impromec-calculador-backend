@@ -16,7 +16,7 @@ export class MailService {
     name: string,
     verificationToken: string,
   ) {
-    const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+    const verificationLink = `${process.env.FRONTEND_URL}/auth/verify-email?token=${verificationToken}`;
 
     const html = await render(ConfirmAccountEmail({ name, verificationLink }));
 
