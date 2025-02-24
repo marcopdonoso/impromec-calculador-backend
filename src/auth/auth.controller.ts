@@ -106,7 +106,7 @@ export class AuthController {
     description: 'Usuario ya verificado o token inválido',
   })
   async resendVerificationEmail(@Request() req) {
-    const user = req.user;
+    const user = req.user; // Obtiene el usuario autenticado
     if (!user) {
       throw new BadRequestException('El token es inválido o faltante.');
     }
