@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -101,6 +102,10 @@ export class AuthService {
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) return null;
+
+    if (!user.isVerified) {
+      throw new UnauthorizedException('Cuenta no verificada. Revisa tu email.');
+    }
 
     const { password: _, ...result } = user.toObject();
     return result;
