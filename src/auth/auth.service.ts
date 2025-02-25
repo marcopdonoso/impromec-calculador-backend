@@ -137,7 +137,7 @@ export class AuthService {
     };
   }
 
-  async resendVerificationEmail(user: any) {
+  async resendVerificationEmail(user: User) {
     const existingUser = await this.userModel.findById(user.id);
 
     if (!existingUser) {
@@ -170,5 +170,23 @@ export class AuthService {
     return {
       message: 'Correo electrónico de verificación reenviado exitosamente',
     };
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.userModel.findOne({ email });
+    if (!user) throw new BadRequestException('Correo no registrado');
+
+    const resetToken = this.jwtService.sign(
+      { sub: user._id },
+      { secret: process.env.JWT_SECRET, expiresIn: '1h' },
+    );
+
+    await this.mailService.sendPasswordResetEmail(
+      user.email,
+      user.name,
+      resetToken,
+    );
+
+    return { message: 'Enlace enviado si el correo existe' };
   }
 }

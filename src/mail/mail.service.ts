@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { render } from '@react-email/render';
+import PasswordResetRequestEmail from 'emails/password-reset-request';
 import { Resend } from 'resend';
 import ConfirmAccountEmail from '../../emails/confirm-account';
 
@@ -24,6 +25,19 @@ export class MailService {
       from: 'Impromec Calculador <noreplay@impromec.com>',
       to,
       subject: 'Confirme su dirección de correo electrónico',
+      html,
+    });
+  }
+
+  async sendPasswordResetEmail(to: string, name: string, resetToken: string) {
+    const resetLink = `${process.env.FRONTEND_URL}/auth/reset-password?token=${resetToken}`;
+
+    const html = await render(PasswordResetRequestEmail({ name, resetLink }));
+
+    return this.resend.emails.send({
+      from: 'Impromec Calculador <noreplay@impromec.com>',
+      to,
+      subject: 'Restablecer contraseña en tu cuenta Impromec Calculador',
       html,
     });
   }
