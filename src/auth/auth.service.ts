@@ -119,11 +119,21 @@ export class AuthService {
       category: user.category,
     };
 
+    const access_token = this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_SECRET'),
+      expiresIn: this.configService.get('JWT_EXPIRES_IN'),
+    });
+
     return {
-      access_token: this.jwtService.sign(payload, {
-        secret: this.configService.get('JWT_SECRET'),
-        expiresIn: this.configService.get('JWT_EXPIRES_IN'),
-      }),
+      access_token,
+      user: {
+        name: user.name,
+        email: user.email,
+        category: user.category,
+        company: user.company,
+        phone: user.phone,
+        location: user.location,
+      },
     };
   }
 
