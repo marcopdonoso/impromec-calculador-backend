@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import { Model } from 'mongoose';
 import { MailService } from 'src/mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { User } from './user.schema';
 
 @Injectable()
@@ -190,5 +191,34 @@ export class AuthService {
     return {
       message: 'Correo de recuperación de contraseña enviado exitosamente',
     };
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto, userId: string) {
+    try {
+      const user = await this.userModel.findById(userId);
+
+      if (!user) {
+        throw new BadRequestException('Usuario no encontrado');
+      }
+
+      const saltRounds = 10;
+      const salt = await bcrypt.genSalt(saltRounds);
+      const hashedPassword = await bcrypt.hash(
+        resetPasswordDto.newPassword,
+        salt,
+      );
+
+      user.password = hashedPassword;
+
+      await user.save();
+
+      return {
+        message: 'Contraseña restablecida exitosamente',
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        'Token de restablecimiento de contraseña inválido o expirado',
+      );
+    }
   }
 }
