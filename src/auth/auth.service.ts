@@ -187,6 +187,8 @@ export class AuthService {
       resetToken,
     );
 
-    return { message: 'Enlace enviado si el correo existe' };
+    return {
+      message: 'Correo de recuperación de contraseña enviado exitosamente',
+    };
   }
 }

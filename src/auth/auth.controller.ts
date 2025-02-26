@@ -18,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { ForgotPasswordDto } from './dto/forgotPassword.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -111,5 +112,21 @@ export class AuthController {
       throw new BadRequestException('El token es inválido o faltante.');
     }
     return this.authService.resendVerificationEmail(user);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Recuperar contraseña' })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Correo de recuperación de contraseña enviado exitosamente',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Correo no registrado',
+  })
+  async forgotPassword(@Body() { email }: ForgotPasswordDto) {
+    return this.authService.forgotPassword(email);
   }
 }
