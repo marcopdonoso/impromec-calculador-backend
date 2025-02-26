@@ -11,7 +11,6 @@ import * as bcrypt from 'bcrypt';
 import { Model } from 'mongoose';
 import { MailService } from 'src/mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
 import { User } from './user.schema';
 
 @Injectable()
@@ -71,16 +70,12 @@ export class AuthService {
       });
 
       const user = await this.userModel.findById(decoded.id);
-
-      if (!user) {
-        throw new BadRequestException('Usuario no encontrado');
-      }
+      if (!user) throw new BadRequestException('Usuario no encontrado');
 
       if (user.isVerified) {
-        return {
-          success: false,
-          message: 'El correo electrónico ya ha sido verificado',
-        };
+        throw new ConflictException(
+          'El correo electrónico ya ha sido verificado',
+        );
       }
 
       user.isVerified = true;
@@ -91,9 +86,15 @@ export class AuthService {
         message: 'Correo electrónico verificado exitosamente',
       };
     } catch (error) {
-      throw new BadRequestException(
-        'Token de verificación inválido o expirado',
-      );
+      if (
+        error.name === 'JsonWebTokenError' ||
+        error.name === 'TokenExpiredError'
+      ) {
+        throw new BadRequestException(
+          'Token de verificación inválido o expirado',
+        );
+      }
+      throw error;
     }
   }
 
@@ -178,7 +179,7 @@ export class AuthService {
     if (!user) throw new BadRequestException('Correo no registrado');
 
     const resetToken = this.jwtService.sign(
-      { sub: user._id },
+      { id: user._id, email: user.email },
       { secret: process.env.JWT_SECRET, expiresIn: '1h' },
     );
 
@@ -193,32 +194,30 @@ export class AuthService {
     };
   }
 
-  async resetPassword(resetPasswordDto: ResetPasswordDto, userId: string) {
-    try {
-      const user = await this.userModel.findById(userId);
+  async resetPassword(newPassword: string, userId: string) {
+    const user = await this.userModel.findById(userId);
 
-      if (!user) {
-        throw new BadRequestException('Usuario no encontrado');
-      }
+    if (!user) {
+      throw new BadRequestException('Usuario no encontrado');
+    }
 
-      const saltRounds = 10;
-      const salt = await bcrypt.genSalt(saltRounds);
-      const hashedPassword = await bcrypt.hash(
-        resetPasswordDto.newPassword,
-        salt,
-      );
-
-      user.password = hashedPassword;
-
-      await user.save();
-
-      return {
-        message: 'Contraseña restablecida exitosamente',
-      };
-    } catch (error) {
+    const passwordMatch = await bcrypt.compare(newPassword, user.password);
+    if (passwordMatch) {
       throw new BadRequestException(
-        'Token de restablecimiento de contraseña inválido o expirado',
+        'La nueva contraseña debe ser diferente a la actual',
       );
     }
+
+    const saltRounds = 10;
+    const salt = await bcrypt.genSalt(saltRounds);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+
+    await user.save();
+
+    return {
+      message: 'Contraseña restablecida exitosamente',
+    };
   }
 }

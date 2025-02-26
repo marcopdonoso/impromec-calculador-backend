@@ -22,6 +22,7 @@ import { ForgotPasswordDto } from './dto/forgotPassword.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
 
@@ -75,23 +76,7 @@ export class AuthController {
     description: 'El correo electrónico ya ha sido verificado',
   })
   async verifyEmail(@Query('token') token: string) {
-    try {
-      const result = await this.authService.verifyEmail(token);
-
-      if (result.success) {
-        return {
-          success: true,
-          message: result.message,
-        };
-      }
-
-      return {
-        success: false,
-        message: result.message,
-      };
-    } catch (error) {
-      throw error;
-    }
+    return this.authService.verifyEmail(token);
   }
 
   @Post('resend-verification-email')
@@ -132,6 +117,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Restablecer contraseña' })
@@ -145,14 +131,14 @@ export class AuthController {
     description: 'Token de restablecimiento de contraseña inválido o expirado',
   })
   async resetPassword(
-    @Body() resetPasswordDto: ResetPasswordDto,
+    @Body() { newPassword }: ResetPasswordDto,
     @Request() req,
   ) {
-    const userId = req.sub;
+    const userId = req.user.id;
     if (!userId)
       throw new BadRequestException(
         'Token de restablecimiento de contraseña inválido o expirado',
       );
-    return this.authService.resetPassword(resetPasswordDto, userId);
+    return this.authService.resetPassword(newPassword, userId);
   }
 }
