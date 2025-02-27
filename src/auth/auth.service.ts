@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -69,16 +70,12 @@ export class AuthService {
       });
 
       const user = await this.userModel.findById(decoded.id);
-
-      if (!user) {
-        throw new BadRequestException('Usuario no encontrado');
-      }
+      if (!user) throw new BadRequestException('Usuario no encontrado');
 
       if (user.isVerified) {
-        return {
-          success: false,
-          message: 'El correo electrónico ya ha sido verificado',
-        };
+        throw new ConflictException(
+          'El correo electrónico ya ha sido verificado',
+        );
       }
 
       user.isVerified = true;
@@ -89,9 +86,15 @@ export class AuthService {
         message: 'Correo electrónico verificado exitosamente',
       };
     } catch (error) {
-      throw new BadRequestException(
-        'Token de verificación inválido o expirado',
-      );
+      if (
+        error.name === 'JsonWebTokenError' ||
+        error.name === 'TokenExpiredError'
+      ) {
+        throw new BadRequestException(
+          'Token de verificación inválido o expirado',
+        );
+      }
+      throw error;
     }
   }
 
@@ -101,6 +104,10 @@ export class AuthService {
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) return null;
+
+    if (!user.isVerified) {
+      throw new UnauthorizedException('Cuenta no verificada. Revisa tu email.');
+    }
 
     const { password: _, ...result } = user.toObject();
     return result;
@@ -114,15 +121,25 @@ export class AuthService {
       category: user.category,
     };
 
+    const access_token = this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_SECRET'),
+      expiresIn: this.configService.get('JWT_EXPIRES_IN'),
+    });
+
     return {
-      access_token: this.jwtService.sign(payload, {
-        secret: this.configService.get('JWT_SECRET'),
-        expiresIn: this.configService.get('JWT_EXPIRES_IN'),
-      }),
+      access_token,
+      user: {
+        name: user.name,
+        email: user.email,
+        category: user.category,
+        company: user.company,
+        phone: user.phone,
+        location: user.location,
+      },
     };
   }
 
-  async resendVerificationEmail(user: any) {
+  async resendVerificationEmail(user: User) {
     const existingUser = await this.userModel.findById(user.id);
 
     if (!existingUser) {
@@ -154,6 +171,55 @@ export class AuthService {
 
     return {
       message: 'Correo electrónico de verificación reenviado exitosamente',
+    };
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.userModel.findOne({ email });
+    if (!user) throw new BadRequestException('Correo no registrado');
+
+    const resetToken = this.jwtService.sign(
+      { id: user._id, email: user.email },
+      { secret: process.env.JWT_SECRET, expiresIn: '1h' },
+    );
+
+    await this.mailService.sendPasswordResetEmail(
+      user.email,
+      user.name,
+      resetToken,
+    );
+
+    return {
+      message: 'Correo de recuperación de contraseña enviado exitosamente',
+    };
+  }
+
+  async resetPassword(newPassword: string, userId: string) {
+    const user = await this.userModel.findById(userId);
+
+    if (!user) {
+      throw new BadRequestException('Usuario no encontrado');
+    }
+
+    const passwordMatch = await bcrypt.compare(newPassword, user.password);
+    if (passwordMatch) {
+      throw new BadRequestException(
+        'La nueva contraseña debe ser diferente a la actual',
+      );
+    }
+
+    const saltRounds = 10;
+    const salt = await bcrypt.genSalt(saltRounds);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+
+    await user.save();
+
+    await this.mailService.sendPasswordResetSuccessEmail(user.email, user.name);
+
+    return {
+      message: 'Contraseña restablecida exitosamente',
     };
   }
 }
