@@ -216,6 +216,8 @@ export class AuthService {
 
     await user.save();
 
+    await this.mailService.sendPasswordResetSuccessEmail(user.email, user.name);
+
     return {
       message: 'Contraseña restablecida exitosamente',
     };
