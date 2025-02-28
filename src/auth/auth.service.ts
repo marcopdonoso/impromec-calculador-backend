@@ -222,4 +222,18 @@ export class AuthService {
       message: 'Contraseña restablecida exitosamente',
     };
   }
+
+  async me(userId: string) {
+    const user = await this.userModel.findById(userId);
+    return {
+      user: {
+        name: user.name,
+        email: user.email,
+        category: user.category,
+        company: user.company,
+        phone: user.phone,
+        location: user.location,
+      },
+    };
+  }
 }

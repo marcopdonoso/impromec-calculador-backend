@@ -141,4 +141,18 @@ export class AuthController {
       );
     return this.authService.resetPassword(newPassword, userId);
   }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Obtener información del usuario autenticado' })
+  @ApiResponse({
+    status: 200,
+    description: 'Información del usuario obtenida exitosamente',
+    schema: { example: { name: 'John Doe', email: '6X8kI@example.com' } },
+  })
+  async me(@Request() req) {
+    return this.authService.me(req.user.sub);
+  }
 }
