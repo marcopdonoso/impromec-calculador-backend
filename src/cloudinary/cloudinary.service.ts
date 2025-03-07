@@ -17,6 +17,8 @@ export class CloudinaryService {
             { width: 500, height: 500, crop: 'limit' },
             { quality: 'auto:good' },
           ],
+          secure: true,
+          url_suffix: 'ssl',
         },
         (error, result) => {
           if (error) return reject(error);

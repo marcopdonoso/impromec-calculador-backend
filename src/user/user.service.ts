@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
@@ -66,6 +65,12 @@ export class UserService {
       file,
       'impromec_avatars',
     );
+
+    let secureUrl = result.secure_url;
+    if (secureUrl.startsWith('http://')) {
+      secureUrl = secureUrl.replace('http://', 'https://');
+    }
+
     user.avatar = result.url;
     await user.save();
 
@@ -86,7 +91,7 @@ export class UserService {
     );
 
     if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException('Contraseña actual incorrecta');
+      throw new BadRequestException('Contraseña actual incorrecta');
     }
 
     const isSamePassword = await bcrypt.compare(

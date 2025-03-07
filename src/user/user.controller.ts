@@ -42,7 +42,7 @@ export class UserController {
     description: 'Perfil del usuario obtenido exitosamente',
   })
   async getProfile(@Request() req) {
-    return this.userService.getProfile(req.user.id);
+    return this.userService.getProfile(req.user.sub);
   }
 
   @Patch('profile')
@@ -56,10 +56,10 @@ export class UserController {
     description: 'Perfil actualizado exitosamente',
   })
   async updateProfile(@Request() req, @Body() updateUserDto: UpdateUserDto) {
-    return this.userService.updateProfile(req.user.id, updateUserDto);
+    return this.userService.updateProfile(req.user.sub, updateUserDto);
   }
 
-  @Patch('avatar')
+  @Post('avatar')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @UseInterceptors(FileInterceptor('avatar'))
@@ -107,7 +107,7 @@ export class UserController {
       );
     }
 
-    return this.userService.uploadAvatar(req.user.id, file);
+    return this.userService.uploadAvatar(req.user.sub, file);
   }
 
   @Post('change-password')
@@ -124,7 +124,7 @@ export class UserController {
     @Request() req,
     @Body() changePasswordDto: ChangePasswordDto,
   ) {
-    return this.userService.changePassword(req.user.id, changePasswordDto);
+    return this.userService.changePassword(req.user.sub, changePasswordDto);
   }
 
   @Delete('account')
@@ -137,6 +137,6 @@ export class UserController {
     description: 'Cuenta eliminada exitosamente',
   })
   async deleteAccount(@Request() req) {
-    return this.userService.deleteAccount(req.user.id);
+    return this.userService.deleteAccount(req.user.sub);
   }
 }

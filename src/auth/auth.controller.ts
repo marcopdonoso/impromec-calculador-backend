@@ -117,7 +117,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Restablecer contraseña' })
@@ -131,15 +131,33 @@ export class AuthController {
     description: 'Token de restablecimiento de contraseña inválido o expirado',
   })
   async resetPassword(
-    @Body() { newPassword }: ResetPasswordDto,
+    @Body() resetPasswordDto: ResetPasswordDto,
     @Request() req,
+    @Query('token') queryToken?: string,
   ) {
-    const userId = req.user.id;
-    if (!userId)
-      throw new BadRequestException(
-        'Token de restablecimiento de contraseña inválido o expirado',
+    // Obtener token de la query o del cuerpo
+    const token = queryToken || resetPasswordDto.token;
+
+    // Si hay token, usarlo para resetear
+    if (token) {
+      return this.authService.resetPasswordWithToken(
+        resetPasswordDto.newPassword,
+        token,
       );
-    return this.authService.resetPassword(newPassword, userId);
+    }
+
+    // Si no hay token pero hay usuario autenticado
+    if (req.user && req.user.sub) {
+      const userId = req.user.sub;
+      return this.authService.resetPassword(
+        resetPasswordDto.newPassword,
+        userId,
+      );
+    }
+
+    throw new BadRequestException(
+      'Token de restablecimiento de contraseña inválido o expirado',
+    );
   }
 
   @Get('me')

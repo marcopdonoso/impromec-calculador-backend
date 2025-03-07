@@ -194,6 +194,34 @@ export class AuthService {
     };
   }
 
+  async resetPasswordWithToken(newPassword: string, token: string) {
+    try {
+      // Verificar el token
+      const decoded = this.jwtService.verify(token, {
+        secret: this.configService.get('JWT_SECRET'),
+      });
+
+      if (!decoded || !decoded.id) {
+        throw new BadRequestException(
+          'Token de restablecimiento de contraseña inválido',
+        );
+      }
+
+      const userId = decoded.id;
+      return this.resetPassword(newPassword, userId);
+    } catch (error) {
+      if (
+        error.name === 'JsonWebTokenError' ||
+        error.name === 'TokenExpiredError'
+      ) {
+        throw new BadRequestException(
+          'Token de restablecimiento de contraseña inválido o expirado',
+        );
+      }
+      throw error;
+    }
+  }
+
   async resetPassword(newPassword: string, userId: string) {
     const user = await this.userModel.findById(userId);
 
