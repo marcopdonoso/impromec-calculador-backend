@@ -21,6 +21,7 @@ import { AuthService } from './auth.service';
 import { ForgotPasswordDto } from './dto/forgotPassword.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -79,6 +80,24 @@ export class AuthController {
     return this.authService.verifyEmail(token);
   }
 
+  @Post('resend-verification-by-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reenviar el correo de verificación proporcionando el email',
+  })
+  @ApiBody({ type: ResendVerificationDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Correo de verificación reenviado exitosamente',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Usuario ya verificado o correo no encontrado',
+  })
+  async resendVerificationByEmail(@Body() { email }: ResendVerificationDto) {
+    return this.authService.resendVerificationByEmail(email);
+  }
+
   @Post('resend-verification-email')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
@@ -117,7 +136,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Restablecer contraseña' })
@@ -131,15 +150,33 @@ export class AuthController {
     description: 'Token de restablecimiento de contraseña inválido o expirado',
   })
   async resetPassword(
-    @Body() { newPassword }: ResetPasswordDto,
+    @Body() resetPasswordDto: ResetPasswordDto,
     @Request() req,
+    @Query('token') queryToken?: string,
   ) {
-    const userId = req.user.id;
-    if (!userId)
-      throw new BadRequestException(
-        'Token de restablecimiento de contraseña inválido o expirado',
+    // Obtener token de la query o del cuerpo
+    const token = queryToken || resetPasswordDto.token;
+
+    // Si hay token, usarlo para resetear
+    if (token) {
+      return this.authService.resetPasswordWithToken(
+        resetPasswordDto.newPassword,
+        token,
       );
-    return this.authService.resetPassword(newPassword, userId);
+    }
+
+    // Si no hay token pero hay usuario autenticado
+    if (req.user && req.user.sub) {
+      const userId = req.user.sub;
+      return this.authService.resetPassword(
+        resetPasswordDto.newPassword,
+        userId,
+      );
+    }
+
+    throw new BadRequestException(
+      'Token de restablecimiento de contraseña inválido o expirado',
+    );
   }
 
   @Get('me')
