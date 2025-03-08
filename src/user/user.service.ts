@@ -147,6 +147,6 @@ export class UserService {
   private getPublicIdFromUrl(url: string): string {
     const startIndex = url.lastIndexOf('/') + 1;
     const endIndex = url.lastIndexOf('.');
-    return 'avatars/' + url.substring(startIndex, endIndex);
+    return 'impromec_avatars/' + url.substring(startIndex, endIndex);
   }
 }

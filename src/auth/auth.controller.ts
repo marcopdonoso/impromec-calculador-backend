@@ -21,6 +21,7 @@ import { AuthService } from './auth.service';
 import { ForgotPasswordDto } from './dto/forgotPassword.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -77,6 +78,24 @@ export class AuthController {
   })
   async verifyEmail(@Query('token') token: string) {
     return this.authService.verifyEmail(token);
+  }
+
+  @Post('resend-verification-by-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reenviar el correo de verificación proporcionando el email',
+  })
+  @ApiBody({ type: ResendVerificationDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Correo de verificación reenviado exitosamente',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Usuario ya verificado o correo no encontrado',
+  })
+  async resendVerificationByEmail(@Body() { email }: ResendVerificationDto) {
+    return this.authService.resendVerificationByEmail(email);
   }
 
   @Post('resend-verification-email')

@@ -31,6 +31,9 @@ export class MailService {
   }
 
   async sendPasswordResetEmail(to: string, name: string, resetToken: string) {
+    // Para debug: imprimir el token en los logs
+    console.log('Token de restablecimiento generado:', resetToken);
+
     const resetLink = `${process.env.FRONTEND_URL}/auth/reset-password?token=${resetToken}`;
 
     const html = await render(PasswordResetRequestEmail({ name, resetLink }));

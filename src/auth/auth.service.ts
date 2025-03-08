@@ -106,7 +106,9 @@ export class AuthService {
     if (!isPasswordValid) return null;
 
     if (!user.isVerified) {
-      throw new UnauthorizedException('Cuenta no verificada. Revisa tu email.');
+      throw new UnauthorizedException(
+        'Cuenta no verificada. Revisa tu email o solicita un nuevo enlace de verificación.',
+      );
     }
 
     const { password: _, ...result } = user.toObject();
@@ -128,14 +130,42 @@ export class AuthService {
 
     return {
       access_token,
-      user: {
-        name: user.name,
+      user,
+    };
+  }
+
+  async resendVerificationByEmail(email: string) {
+    const user = await this.userModel.findOne({ email });
+
+    if (!user) {
+      throw new BadRequestException('Usuario no encontrado');
+    }
+
+    if (user.isVerified) {
+      throw new BadRequestException(
+        'El correo electrónico ya ha sido verificado',
+      );
+    }
+
+    const verificationToken = this.jwtService.sign(
+      {
         email: user.email,
-        category: user.category,
-        company: user.company,
-        phone: user.phone,
-        location: user.location,
+        id: user._id,
       },
+      {
+        secret: this.configService.get('JWT_SECRET'),
+        expiresIn: '1d',
+      },
+    );
+
+    await this.mailService.sendVerificationEmail(
+      user.email,
+      user.name,
+      verificationToken,
+    );
+
+    return {
+      message: 'Correo electrónico de verificación reenviado exitosamente',
     };
   }
 
@@ -180,7 +210,7 @@ export class AuthService {
 
     const resetToken = this.jwtService.sign(
       { id: user._id, email: user.email },
-      { secret: process.env.JWT_SECRET, expiresIn: '1h' },
+      { secret: this.configService.get('JWT_SECRET'), expiresIn: '1h' },
     );
 
     await this.mailService.sendPasswordResetEmail(
@@ -253,15 +283,6 @@ export class AuthService {
 
   async me(userId: string) {
     const user = await this.userModel.findById(userId);
-    return {
-      user: {
-        name: user.name,
-        email: user.email,
-        category: user.category,
-        company: user.company,
-        phone: user.phone,
-        location: user.location,
-      },
-    };
+    return { user };
   }
 }
