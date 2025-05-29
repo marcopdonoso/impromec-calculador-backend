@@ -34,13 +34,13 @@ export class ProjectController {
   @Get()
   @ApiOperation({ summary: 'Get all projects for the current user' })
   findAll(@Request() req) {
-    return this.projectService.findAll(req.user._id);
+    return this.projectService.findAll(req.user.sub);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific project by ID' })
   findOne(@Param('id') id: string, @Request() req) {
-    return this.projectService.findOne(id, req.user._id);
+    return this.projectService.findOne(id, req.user.sub);
   }
 
   @Patch(':id')
@@ -50,13 +50,13 @@ export class ProjectController {
     @Body() updateProjectDto: UpdateProjectDto, 
     @Request() req
   ) {
-    return this.projectService.update(id, updateProjectDto, req.user._id);
+    return this.projectService.update(id, updateProjectDto, req.user.sub);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a project' })
   remove(@Param('id') id: string, @Request() req) {
-    return this.projectService.remove(id, req.user._id);
+    return this.projectService.remove(id, req.user.sub);
   }
 
   // Endpoints para manejar sectores
@@ -67,7 +67,7 @@ export class ProjectController {
     @Body() createSectorDto: CreateSectorDto, 
     @Request() req
   ) {
-    return this.projectService.addSector(id, createSectorDto, req.user._id);
+    return this.projectService.addSector(id, createSectorDto, req.user.sub);
   }
 
   @Patch(':id/sectors/:sectorId')
@@ -78,7 +78,7 @@ export class ProjectController {
     @Body() updateSectorDto: UpdateSectorDto,
     @Request() req,
   ) {
-    return this.projectService.updateSector(id, sectorId, updateSectorDto, req.user._id);
+    return this.projectService.updateSector(id, sectorId, updateSectorDto, req.user.sub);
   }
 
   @Delete(':id/sectors/:sectorId')
@@ -88,7 +88,7 @@ export class ProjectController {
     @Param('sectorId') sectorId: string,
     @Request() req,
   ) {
-    return this.projectService.removeSector(id, sectorId, req.user._id);
+    return this.projectService.removeSector(id, sectorId, req.user.sub);
   }
 
   // Endpoints para manejar cables en un sector
@@ -100,7 +100,7 @@ export class ProjectController {
     @Body() cableData: any,
     @Request() req,
   ) {
-    return this.projectService.addCableToSector(id, sectorId, cableData, req.user._id);
+    return this.projectService.addCableToSector(id, sectorId, cableData, req.user.sub);
   }
 
   @Patch(':id/sectors/:sectorId/cables/:cableId')
@@ -117,7 +117,7 @@ export class ProjectController {
       sectorId, 
       cableId, 
       cableData, 
-      req.user._id
+      req.user.sub
     );
   }
 
@@ -133,7 +133,7 @@ export class ProjectController {
       id, 
       sectorId, 
       cableId, 
-      req.user._id
+      req.user.sub
     );
   }
 
@@ -150,7 +150,7 @@ export class ProjectController {
       id, 
       sectorId, 
       resultsData, 
-      req.user._id
+      req.user.sub
     );
   }
 }

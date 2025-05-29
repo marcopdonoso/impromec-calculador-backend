@@ -14,10 +14,10 @@ export class ProjectService {
     @InjectModel(Project.name) private projectModel: Model<Project>,
   ) {}
 
-  async create(createProjectDto: CreateProjectDto, user: User): Promise<Project> {
+  async create(createProjectDto: CreateProjectDto, user: any): Promise<Project> {
     const newProject = new this.projectModel({
       ...createProjectDto,
-      user: user._id,
+      user: user.sub, // Usando sub que contiene el ID del usuario desde el JWT
       sectors: [],
     });
     return newProject.save();
