@@ -11,14 +11,14 @@ export class Sector extends Document {
   @Prop({ required: true })
   sectorName: string;
 
-  @Prop({ required: true, enum: ['escalerilla', 'canal'] })
-  trayTypeSelection: TrayType;
+  @Prop({ enum: ['escalerilla', 'canal'] })
+  trayTypeSelection?: TrayType;
 
-  @Prop({ required: true, default: 30 })
-  reservePercentage: number;
+  @Prop({ default: 30 })
+  reservePercentage?: number;
 
-  @Prop({ required: true, enum: ['singleLayer', 'multiLayer'] })
-  installationLayerSelection: InstallationLayerType;
+  @Prop({ enum: ['singleLayer', 'multiLayer'] })
+  installationLayerSelection?: InstallationLayerType;
 
   @Prop({ type: [CableInTraySchema], default: [] })
   cablesInTray: CableInTray[];

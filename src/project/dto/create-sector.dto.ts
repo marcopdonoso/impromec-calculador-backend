@@ -8,20 +8,20 @@ export class CreateSectorDto {
   @IsString()
   sectorName: string;
 
-  @ApiProperty({ description: 'Tipo de bandeja seleccionada', enum: ['escalerilla', 'canal'] })
-  @IsNotEmpty()
+  @ApiProperty({ description: 'Tipo de bandeja seleccionada', enum: ['escalerilla', 'canal'], required: false })
+  @IsOptional()
   @IsEnum(['escalerilla', 'canal'])
-  trayTypeSelection: TrayType;
+  trayTypeSelection?: TrayType;
 
-  @ApiProperty({ description: 'Porcentaje de reserva', default: 30 })
+  @ApiProperty({ description: 'Porcentaje de reserva', default: 30, required: false })
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
-  @IsOptional()
-  reservePercentage?: number = 30;
+  reservePercentage?: number;
 
-  @ApiProperty({ description: 'Tipo de instalación', enum: ['singleLayer', 'multiLayer'] })
-  @IsNotEmpty()
+  @ApiProperty({ description: 'Tipo de instalación', enum: ['singleLayer', 'multiLayer'], required: false })
+  @IsOptional()
   @IsEnum(['singleLayer', 'multiLayer'])
-  installationLayerSelection: InstallationLayerType;
+  installationLayerSelection?: InstallationLayerType;
 }

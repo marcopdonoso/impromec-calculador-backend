@@ -15,11 +15,22 @@ export class ProjectService {
   ) {}
 
   async create(createProjectDto: CreateProjectDto, user: any): Promise<Project> {
-    const newProject = new this.projectModel({
+    // Preparar los datos básicos del proyecto
+    const projectData = {
       ...createProjectDto,
       user: user.sub, // Usando sub que contiene el ID del usuario desde el JWT
       sectors: [],
-    });
+    };
+    
+    // Si el usuario decidió no dividir el proyecto en sectores, crear un sector por defecto
+    if (createProjectDto.hasSectors === false) {
+      projectData.sectors.push({
+        sectorName: 'General',
+        // Los demás campos son opcionales y se pueden configurar posteriormente
+      });
+    }
+    
+    const newProject = new this.projectModel(projectData);
     return newProject.save();
   }
 
