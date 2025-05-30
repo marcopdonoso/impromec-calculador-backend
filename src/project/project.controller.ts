@@ -179,23 +179,56 @@ export class ProjectController {
 
   @Patch(':id/sectors/:sectorId')
   @ApiOperation({ summary: 'Update a sector in a project' })
-  updateSector(
+  async updateSector(
     @Param('id') id: string,
     @Param('sectorId') sectorId: string,
     @Body() updateSectorDto: UpdateSectorDto,
     @Request() req,
   ) {
-    return this.projectService.updateSector(id, sectorId, updateSectorDto, req.user.sub);
+    const updatedProject = await this.projectService.updateSector(id, sectorId, updateSectorDto, req.user.sub);
+    
+    // Encontrar el sector actualizado
+    const updatedSector = updatedProject.sectors.find(s => s._id.toString() === sectorId);
+    if (!updatedSector) {
+      throw new NotFoundException(`Sector with ID ${sectorId} not found`);
+    }
+    
+    return {
+      success: true,
+      message: 'Sector actualizado exitosamente',
+      sector: {
+        id: updatedSector._id,
+        sectorName: updatedSector.sectorName,
+        trayTypeSelection: updatedSector.trayTypeSelection,
+        reservePercentage: updatedSector.reservePercentage,
+        installationLayerSelection: updatedSector.installationLayerSelection,
+        cablesCount: updatedSector.cablesInTray ? updatedSector.cablesInTray.length : 0
+      },
+      project: {
+        id: updatedProject._id,
+        projectName: updatedProject.projectName
+      }
+    };
   }
 
   @Delete(':id/sectors/:sectorId')
   @ApiOperation({ summary: 'Remove a sector from a project' })
-  removeSector(
+  async removeSector(
     @Param('id') id: string,
     @Param('sectorId') sectorId: string,
     @Request() req,
   ) {
-    return this.projectService.removeSector(id, sectorId, req.user.sub);
+    const updatedProject = await this.projectService.removeSector(id, sectorId, req.user.sub);
+    
+    return {
+      success: true,
+      message: 'Sector eliminado exitosamente',
+      project: {
+        id: updatedProject._id,
+        projectName: updatedProject.projectName,
+        sectorsCount: updatedProject.sectors.length
+      }
+    };
   }
 
   // Endpoints para manejar cables directamente en el proyecto (usa el sector por defecto)
