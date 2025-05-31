@@ -22,7 +22,7 @@
     "email:dev": "email dev -p 3002"
   },
   "dependencies": {
-    "@nestjs/common": "^11.0.9",
+    "@nestjs/common": "^11.1.2",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.9",
     "@nestjs/jwt": "^11.0.0",
@@ -60,7 +60,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/multer": "^1.4.12",
-    "@types/node": "^20.17.17",
+    "@types/node": "^20.17.57",
     "@types/nodemailer": "^6.4.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
@@ -80,7 +80,7 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.8.3"
   },
   "jest": {
     "moduleFileExtensions": [
