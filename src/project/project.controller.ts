@@ -57,12 +57,33 @@ export class ProjectController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all projects for the current user' })
+  @ApiOperation({ summary: 'Get all projects for the authenticated user' })
   async findAll(@Request() req) {
-    const projects = await this.projectService.findAll(req.user.sub);
+    const allProjects = await this.projectService.findAll(req.user.sub);
+    
+    // Transformar los proyectos para incluir solo los datos necesarios
+    const simplifiedProjects = allProjects.map(project => {
+      // Determinar si es un proyecto sin sectores (con sector por defecto "General")
+      const isNonSectoredProject = 
+        project.sectors.length === 1 && 
+        project.sectors[0].sectorName === 'General';
+      
+      // Convertir el documento de Mongoose a un objeto JavaScript plano
+      const projectObj = project.toObject();
+      
+      return {
+        id: projectObj._id,
+        projectName: projectObj.projectName,
+        hasSectors: !isNonSectoredProject,
+        sectorsCount: isNonSectoredProject ? 0 : projectObj.sectors.length,
+        createdAt: projectObj.createdAt,
+        updatedAt: projectObj.updatedAt
+      };
+    });
+    
     return {
       success: true,
-      projects
+      projects: simplifiedProjects
     };
   }
 
@@ -110,16 +131,31 @@ export class ProjectController {
         response.project['cables'] = [];
       }
     } else {
-      // Para proyectos con sectores personalizados, incluir el array de sectores completo
-      response.project['sectors'] = project.sectors.map(sector => ({
-        id: sector._id,
-        sectorName: sector.sectorName,
-        trayTypeSelection: sector.trayTypeSelection,
-        reservePercentage: sector.reservePercentage,
-        installationLayerSelection: sector.installationLayerSelection,
-        cablesCount: sector.cablesInTray ? sector.cablesInTray.length : 0,
-        results: sector.results
-      }));
+      // Para proyectos con sectores personalizados, incluir el array de sectores completo con sus cables
+      response.project['sectors'] = project.sectors.map(sector => {
+        const sectorData = {
+          id: sector._id,
+          sectorName: sector.sectorName,
+          trayTypeSelection: sector.trayTypeSelection,
+          reservePercentage: sector.reservePercentage,
+          installationLayerSelection: sector.installationLayerSelection,
+          cablesCount: sector.cablesInTray ? sector.cablesInTray.length : 0,
+          results: sector.results,
+          cables: []
+        };
+        
+        // Incluir los cables de cada sector
+        if (sector.cablesInTray && sector.cablesInTray.length > 0) {
+          sectorData.cables = sector.cablesInTray.map(cable => ({
+            id: cable._id,
+            cable: cable.cable,
+            quantity: cable.quantity,
+            arrangement: cable.arrangement
+          }));
+        }
+        
+        return sectorData;
+      });
     }
     
     return response;

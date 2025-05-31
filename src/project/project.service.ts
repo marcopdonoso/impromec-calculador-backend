@@ -22,11 +22,13 @@ export class ProjectService {
       sectors: [],
     };
     
-    // Si el usuario decidió no dividir el proyecto en sectores, crear un sector por defecto
+    // Si el usuario decidió no dividir el proyecto en sectores, crear un sector por defecto con valores predeterminados
     if (createProjectDto.hasSectors === false) {
       projectData.sectors.push({
         sectorName: 'General',
-        // Los demás campos son opcionales y se pueden configurar posteriormente
+        trayTypeSelection: 'escalerilla',
+        reservePercentage: 30,
+        installationLayerSelection: 'singleLayer',
       });
     }
     
@@ -66,7 +68,16 @@ export class ProjectService {
   // Métodos para manejar sectores
   async addSector(projectId: string, createSectorDto: CreateSectorDto, userId: string): Promise<Project> {
     const project = await this.findOne(projectId, userId);
-    project.sectors.push(createSectorDto as any);
+    
+    // Asegurar que todos los campos opcionales tengan valores predeterminados
+    const sectorData = {
+      sectorName: createSectorDto.sectorName,
+      trayTypeSelection: createSectorDto.trayTypeSelection || 'escalerilla',
+      reservePercentage: createSectorDto.reservePercentage !== undefined ? createSectorDto.reservePercentage : 30,
+      installationLayerSelection: createSectorDto.installationLayerSelection || 'singleLayer',
+    };
+    
+    project.sectors.push(sectorData as any);
     return project.save();
   }
 
