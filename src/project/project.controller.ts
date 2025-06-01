@@ -16,6 +16,7 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateSectorDto } from './dto/create-sector.dto';
+import { CalculateTrayDto } from './dto/calculate-tray.dto';
 import { UpdateSectorDto } from './dto/update-sector.dto';
 import { CreateCableInTrayDto } from './dto/create-cable.dto';
 
@@ -550,5 +551,81 @@ export class ProjectController {
       resultsData, 
       req.user.sub
     );
+  }
+
+  // Endpoint para calcular la bandeja óptima de un sector
+  @Post(':id/sectors/:sectorId/calculate-tray')
+  @ApiOperation({ summary: 'Calculate the optimal tray for a sector' })
+  async calculateSectorTray(
+    @Param('id') id: string,
+    @Param('sectorId') sectorId: string,
+    @Body() calculateTrayDto: CalculateTrayDto,
+    @Request() req,
+  ) {
+    try {
+      const project = await this.projectService.calculateSectorTray(
+        id,
+        sectorId,
+        req.user.sub,
+        calculateTrayDto
+      );
+      
+      // Encontrar el sector actualizado en el proyecto
+      const sector = project.sectors.find(s => s._id.toString() === sectorId);
+      
+      return {
+        success: true,
+        message: 'Cálculo de bandeja completado exitosamente',
+        data: {
+          projectId: project._id,
+          sectorId: sectorId,
+          sectorName: sector.sectorName,
+          results: sector.results
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        data: null
+      };
+    }
+  }
+  
+  // Endpoint para calcular la bandeja óptima de un proyecto sin sectores (usa el sector "General")
+  @Post(':id/calculate-tray')
+  @ApiOperation({ summary: 'Calculate the optimal tray for a project without sectors (uses the "General" sector)' })
+  async calculateGeneralTray(
+    @Param('id') id: string,
+    @Body() calculateTrayDto: CalculateTrayDto,
+    @Request() req,
+  ) {
+    try {
+      const project = await this.projectService.calculateGeneralTray(
+        id,
+        calculateTrayDto,
+        req.user.sub
+      );
+      
+      // Encontrar el sector "General" actualizado
+      const generalSector = project.sectors.find(s => s.sectorName === 'General');
+      
+      return {
+        success: true,
+        message: 'Cálculo de bandeja completado exitosamente para el sector General',
+        data: {
+          projectId: project._id,
+          sectorId: generalSector._id,
+          sectorName: 'General',
+          results: generalSector.results
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+        data: null
+      };
+    }
   }
 }

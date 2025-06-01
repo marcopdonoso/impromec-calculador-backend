@@ -1,0 +1,432 @@
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { CableTray } from '../catalog/schemas/cable-tray.schema';
+import { Tray, TrayCategory } from './schemas/tray.schema';
+import { CableInTray } from './schemas/cable.schema';
+import { Results } from './schemas/results.schema';
+import { InstallationLayerType, TrayType } from './schemas/sector.schema';
+import { CableArrangementType } from './schemas/cable.schema';
+
+@Injectable()
+export class TrayCalculatorService {
+  // Factores de seguridad y constantes
+  private readonly WEIGHT_SAFETY_FACTOR = 1.2; // 20% adicional para peso
+  private readonly DIMENSION_SAFETY_FACTOR = 1.1; // 10% adicional para dimensiones
+  private readonly LADDER_HEIGHT_REDUCTION = 15; // Reducción de altura útil en mm para bandejas tipo escalerilla
+  
+  constructor(
+    @InjectModel(CableTray.name) private cableTrayModel: Model<CableTray>,
+  ) {}
+
+  /**
+   * Calcula y determina la bandeja idónea y alternativas basado en los datos del sector
+   * @param trayType Tipo de bandeja seleccionada ('escalerilla' o 'canal')
+   * @param reservePercentage Porcentaje de reserva (ej. 30%)
+   * @param installationLayer Tipo de instalación ('singleLayer' o 'multiLayer')
+   * @param cablesInTray Arreglo de cables en la bandeja
+   * @returns Objeto Results con la opción más conveniente y alternativas
+   */
+  async calculateOptimalTray(
+    trayType: TrayType,
+    reservePercentage: number,
+    installationLayer: InstallationLayerType,
+    cablesInTray: CableInTray[],
+  ): Promise<Results> {
+    // Si no hay cables, no podemos calcular
+    if (!cablesInTray || cablesInTray.length === 0) {
+      return {
+        moreConvenientOption: null,
+        otherRecommendedOptions: [],
+      } as Results;
+    }
+
+    // 1. Calcular el peso total por metro lineal con factor de seguridad
+    const totalWeightPerMeter = this.calculateTotalWeight(cablesInTray);
+
+    // 2 y 3. Calcular dimensiones según tipo de instalación y aplicar factores
+    let requiredWidth = 0;
+    let requiredHeight = 0;
+    let requiredArea = 0;
+
+    if (installationLayer === 'singleLayer') {
+      // Determinar si la disposición es horizontal o en trébol
+      const horizontalArrangement = this.isHorizontalArrangement(cablesInTray);
+      
+      if (horizontalArrangement) {
+        // Instalación en una sola capa - horizontal
+        const dimensions = this.calculateSingleLayerHorizontalDimensions(
+          cablesInTray,
+          trayType,
+          reservePercentage
+        );
+        requiredWidth = dimensions.width;
+        requiredHeight = dimensions.height;
+      } else {
+        // Instalación en una sola capa - trébol
+        const dimensions = this.calculateSingleLayerCloverDimensions(
+          cablesInTray,
+          trayType,
+          reservePercentage
+        );
+        requiredWidth = dimensions.width;
+        requiredHeight = dimensions.height;
+      }
+      
+      // Para una sola capa, filtramos por ancho y alto
+      const suitableTrays = await this.findSuitableTraysForSingleLayer(
+        trayType,
+        totalWeightPerMeter,
+        requiredWidth,
+        requiredHeight
+      );
+
+      if (suitableTrays.length === 0) {
+        return {
+          moreConvenientOption: null,
+          otherRecommendedOptions: [],
+        } as Results;
+      }
+
+      // Seleccionar la bandeja óptima y alternativas para capa única
+      return this.selectOptimalTraysForSingleLayer(
+        suitableTrays, 
+        requiredWidth,
+        requiredHeight
+      );
+      
+    } else {
+      // Instalación en multicapa - calcular área requerida
+      requiredArea = this.calculateMultiLayerArea(
+        cablesInTray,
+        reservePercentage
+      );
+      
+      // Para multicapa, filtramos por área útil
+      const suitableTrays = await this.findSuitableTraysForMultiLayer(
+        trayType,
+        totalWeightPerMeter,
+        requiredArea
+      );
+
+      if (suitableTrays.length === 0) {
+        return {
+          moreConvenientOption: null,
+          otherRecommendedOptions: [],
+        } as Results;
+      }
+
+      // Seleccionar la bandeja óptima y alternativas para multicapa
+      return this.selectOptimalTraysForMultiLayer(
+        suitableTrays, 
+        requiredArea
+      );
+    }
+  }
+
+  /**
+   * Determina si la disposición predominante es horizontal
+   */
+  private isHorizontalArrangement(cablesInTray: CableInTray[]): boolean {
+    const horizontalCount = cablesInTray.filter(
+      cable => !cable.arrangement || cable.arrangement === 'horizontal'
+    ).length;
+    
+    return horizontalCount >= cablesInTray.length / 2;
+  }
+
+  /**
+   * Calcula el peso total por metro de todos los cables con factor de seguridad
+   */
+  private calculateTotalWeight(cablesInTray: CableInTray[]): number {
+    const totalWeight = cablesInTray.reduce((total, cableInTray) => {
+      return total + (cableInTray.cable.weightPerMeterKG * cableInTray.quantity);
+    }, 0);
+    
+    return totalWeight * this.WEIGHT_SAFETY_FACTOR;
+  }
+
+  /**
+   * Calcula dimensiones para instalación en una sola capa horizontal
+   */
+  private calculateSingleLayerHorizontalDimensions(
+    cablesInTray: CableInTray[],
+    trayType: TrayType,
+    reservePercentage: number,
+  ): { width: number, height: number } {
+    // Calcular ancho sumando diámetros por cantidad
+    let totalWidth = cablesInTray.reduce((width, cableInTray) => {
+      return width + (cableInTray.cable.externalDiameterMM * cableInTray.quantity);
+    }, 0);
+    
+    // Aplicar factor de seguridad y reserva al ancho
+    totalWidth = totalWidth * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
+    
+    // Altura = diámetro del cable más grande
+    let maxHeight = Math.max(...cablesInTray.map(cableInTray => 
+      cableInTray.cable.externalDiameterMM
+    ));
+    
+    // Para escalerilla, añadir altura adicional
+    if (trayType === 'escalerilla') {
+      maxHeight += this.LADDER_HEIGHT_REDUCTION;
+    }
+    
+    return { width: totalWidth, height: maxHeight };
+  }
+
+  /**
+   * Calcula dimensiones para instalación en una sola capa con disposición en trébol
+   */
+  private calculateSingleLayerCloverDimensions(
+    cablesInTray: CableInTray[],
+    trayType: TrayType,
+    reservePercentage: number,
+  ): { width: number, height: number } {
+    // Agrupar cables por diámetro
+    const cablesByDiameter = this.groupCablesByDiameter(cablesInTray);
+    
+    // Calcular ancho total
+    let totalWidth = 0;
+    for (const [diameterKey, cables] of Object.entries(cablesByDiameter)) {
+      const diameter = parseFloat(diameterKey);
+      const totalQuantity = cables.reduce((sum, cable) => sum + cable.quantity, 0);
+      
+      // Calcular cuántos grupos de trébol se forman (cada 3 cables)
+      const cloverGroups = Math.ceil(totalQuantity / 3);
+      
+      // Cada grupo ocupa 2 veces el diámetro en ancho
+      totalWidth += cloverGroups * 2 * diameter;
+    }
+    
+    // Aplicar factor de seguridad y reserva al ancho
+    totalWidth = totalWidth * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
+    
+    // Altura = 2 veces el diámetro del cable más grande
+    let maxDiameter = Math.max(...cablesInTray.map(cableInTray => 
+      cableInTray.cable.externalDiameterMM
+    ));
+    let maxHeight = 2 * maxDiameter;
+    
+    // Para escalerilla, añadir altura adicional
+    if (trayType === 'escalerilla') {
+      maxHeight += this.LADDER_HEIGHT_REDUCTION;
+    }
+    
+    return { width: totalWidth, height: maxHeight };
+  }
+
+  /**
+   * Agrupar cables por diámetro para cálculos de disposición en trébol
+   */
+  private groupCablesByDiameter(cablesInTray: CableInTray[]): Record<string, CableInTray[]> {
+    const groups: Record<string, CableInTray[]> = {};
+    
+    for (const cable of cablesInTray) {
+      const diameter = cable.cable.externalDiameterMM.toString();
+      if (!groups[diameter]) {
+        groups[diameter] = [];
+      }
+      groups[diameter].push(cable);
+    }
+    
+    return groups;
+  }
+
+  /**
+   * Calcula el área requerida para instalación multicapa
+   */
+  private calculateMultiLayerArea(
+    cablesInTray: CableInTray[],
+    reservePercentage: number,
+  ): number {
+    // Sumar áreas individuales por cantidad
+    let totalArea = cablesInTray.reduce((area, cableInTray) => {
+      return area + (cableInTray.cable.externalAreaMM2 * cableInTray.quantity);
+    }, 0);
+    
+    // Aplicar factor de seguridad y reserva
+    return totalArea * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
+  }
+
+  /**
+   * Busca bandejas adecuadas para instalación en una sola capa
+   */
+  private async findSuitableTraysForSingleLayer(
+    trayType: TrayType,
+    requiredLoadCapacity: number,
+    requiredWidth: number,
+    requiredHeight: number,
+  ): Promise<CableTray[]> {
+    // Buscar bandejas que cumplan con capacidad de carga, ancho y alto
+    const suitableTrays = await this.cableTrayModel.find({
+      type: trayType,
+      loadCapacity: { $gte: requiredLoadCapacity },
+      width: { $gte: requiredWidth },
+      isActive: true,
+    }).exec();
+    
+    // Filtrar por altura, considerando la reducción en escalerillas
+    return suitableTrays.filter(tray => {
+      if (trayType === 'escalerilla') {
+        return tray.height >= requiredHeight;
+      } else {
+        return tray.height >= requiredHeight;
+      }
+    });
+  }
+
+  /**
+   * Busca bandejas adecuadas para instalación multicapa
+   */
+  private async findSuitableTraysForMultiLayer(
+    trayType: TrayType,
+    requiredLoadCapacity: number,
+    requiredArea: number,
+  ): Promise<CableTray[]> {
+    // Buscar bandejas que cumplan con capacidad de carga
+    const traySizesByLoad = await this.cableTrayModel.find({
+      type: trayType,
+      loadCapacity: { $gte: requiredLoadCapacity },
+      isActive: true,
+    }).exec();
+    
+    // Filtrar por área útil, considerando la reducción en escalerillas
+    return traySizesByLoad.filter(tray => {
+      let usefulArea;
+      if (trayType === 'escalerilla') {
+        const usefulHeight = Math.max(0, tray.height - this.LADDER_HEIGHT_REDUCTION);
+        usefulArea = tray.width * usefulHeight;
+      } else {
+        usefulArea = tray.width * tray.height;
+      }
+      
+      return usefulArea >= requiredArea;
+    });
+  }
+
+  /**
+   * Calcula el área útil de una bandeja considerando tipo
+   */
+  private calculateUsefulArea(tray: CableTray): number {
+    if (tray.type === 'escalerilla') {
+      const usefulHeight = Math.max(0, tray.height - this.LADDER_HEIGHT_REDUCTION);
+      return tray.width * usefulHeight;
+    } else {
+      return tray.width * tray.height;
+    }
+  }
+
+  /**
+   * Selecciona la bandeja óptima y alternativas para instalación en una sola capa
+   */
+  private selectOptimalTraysForSingleLayer(
+    suitableTrays: CableTray[],
+    requiredWidth: number,
+    requiredHeight: number,
+  ): Results {
+    // Copiar para no modificar la original
+    const trayCopies = [...suitableTrays];
+    
+    // Ordenar primero por altura (menor a mayor)
+    trayCopies.sort((a, b) => a.height - b.height);
+    
+    // Luego ordenar por margen de ancho (menor sobredimensionamiento)
+    trayCopies.sort((a, b) => {
+      const marginA = a.width / requiredWidth - 1;
+      const marginB = b.width / requiredWidth - 1;
+      return marginA - marginB;
+    });
+    
+    // Convertir a formato de resultados
+    return this.createResultsFromTrays(trayCopies);
+  }
+
+  /**
+   * Selecciona la bandeja óptima y alternativas para instalación multicapa
+   */
+  private selectOptimalTraysForMultiLayer(
+    suitableTrays: CableTray[],
+    requiredArea: number,
+  ): Results {
+    // Copiar para no modificar la original
+    const trayCopies = [...suitableTrays];
+    
+    // Ordenar primero por altura (menor a mayor)
+    trayCopies.sort((a, b) => a.height - b.height);
+    
+    // Luego ordenar por margen de área útil (menor sobredimensionamiento)
+    trayCopies.sort((a, b) => {
+      const usefulAreaA = this.calculateUsefulArea(a);
+      const usefulAreaB = this.calculateUsefulArea(b);
+      const marginA = usefulAreaA / requiredArea - 1;
+      const marginB = usefulAreaB / requiredArea - 1;
+      return marginA - marginB;
+    });
+    
+    // Convertir a formato de resultados
+    return this.createResultsFromTrays(trayCopies);
+  }
+
+  /**
+   * Crea el objeto Results a partir de las bandejas seleccionadas
+   */
+  private createResultsFromTrays(sortedTrays: CableTray[]): Results {
+    if (sortedTrays.length === 0) {
+      return {
+        moreConvenientOption: null,
+        otherRecommendedOptions: [],
+      } as Results;
+    }
+    
+    // La primera es la óptima
+    const optimalTray = this.convertToTrayModel(sortedTrays[0]);
+    
+    // Las siguientes son alternativas (máximo 3)
+    const alternativeTrays = sortedTrays.slice(1, 4).map(tray => 
+      this.convertToTrayModel(tray)
+    );
+    
+    return {
+      moreConvenientOption: optimalTray,
+      otherRecommendedOptions: alternativeTrays,
+    } as Results;
+  }
+
+  /**
+   * Mapea una categoría de bandeja del catálogo al formato requerido por el frontend
+   */
+  private mapCategoryToFrontendFormat(catalogCategory: string): TrayCategory {
+    // Mapeo de categorías del catálogo a las categorías del frontend
+    const categoryMap = {
+      'super liviana': 'super-liviana' as TrayCategory,
+      'liviana': 'liviana' as TrayCategory,
+      'semi pesada': 'semi-pesada' as TrayCategory,
+      'pesada': 'pesada' as TrayCategory,
+      'super pesada': 'super-pesada' as TrayCategory
+    };
+    
+    return categoryMap[catalogCategory] || 'liviana' as TrayCategory;
+  }
+
+  /**
+   * Convierte un modelo CableTray a modelo Tray para resultados, siguiendo la estructura del frontend
+   */
+  private convertToTrayModel(cableTray: CableTray): Tray {
+    // Usamos el ID del documento como ID de la bandeja
+    return {
+      id: cableTray._id.toString(),
+      trayType: cableTray.type as TrayType,
+      trayCategory: this.mapCategoryToFrontendFormat(cableTray.category),
+      technicalDetails: {
+        thicknessInMM: cableTray.thickness,
+        widthInMM: cableTray.width,
+        heightInMM: cableTray.height,
+        loadResistanceInKgM: cableTray.loadCapacity
+      },
+      // Campos adicionales que pueden ser útiles (no requeridos por el frontend)
+      trayName: `${cableTray.type} ${cableTray.width}x${cableTray.height}`,
+      trayDescription: `Bandeja tipo ${cableTray.type}, categoría ${cableTray.category}`
+    } as Tray;
+  }
+}

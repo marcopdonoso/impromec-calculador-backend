@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { CalculateTrayDto } from './dto/calculate-tray.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Project } from './schemas/project.schema';
@@ -7,11 +8,13 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { User } from 'src/auth/user.schema';
 import { CreateSectorDto } from './dto/create-sector.dto';
 import { UpdateSectorDto } from './dto/update-sector.dto';
+import { TrayCalculatorService } from './tray-calculator.service';
 
 @Injectable()
 export class ProjectService {
   constructor(
     @InjectModel(Project.name) private projectModel: Model<Project>,
+    private readonly trayCalculatorService: TrayCalculatorService,
   ) {}
 
   async create(createProjectDto: CreateProjectDto, user: any): Promise<Project> {
@@ -185,6 +188,104 @@ export class ProjectService {
     }
     
     project.sectors[sectorIndex].results = resultsData;
+    return project.save();
+  }
+
+  /**
+   * Calcula la bandeja óptima y alternativas para un proyecto sin sectores (usa el sector "General")
+   * @param projectId ID del proyecto
+   * @param userId ID del usuario (para verificar permisos)
+   * @returns Proyecto actualizado con los resultados del cálculo
+   */
+  async calculateGeneralTray(
+    projectId: string,
+    calculateTrayDto: CalculateTrayDto,
+    userId: string,
+  ): Promise<Project> {
+    const project = await this.findOne(projectId, userId);
+    
+    // Buscar el sector "General"
+    const generalSectorIndex = project.sectors.findIndex(s => s.sectorName === 'General');
+    
+    if (generalSectorIndex === -1) {
+      throw new NotFoundException('Este proyecto no tiene un sector "General". Por favor utilice un sector específico.');
+    }
+    
+    // Actualizar los parámetros del sector General
+    const generalSector = project.sectors[generalSectorIndex];
+    
+    // Actualizar tipo de bandeja y porcentaje de reserva
+    project.sectors[generalSectorIndex].trayTypeSelection = calculateTrayDto.trayTypeSelection;
+    if (calculateTrayDto.reservePercentage !== undefined) {
+      project.sectors[generalSectorIndex].reservePercentage = calculateTrayDto.reservePercentage;
+    }
+    
+    // Guardar los cambios en el proyecto
+    await project.save();
+    
+    // Llamar al método existente con el índice del sector "General"
+    return this.calculateSectorTray(projectId, generalSector._id.toString(), userId);
+  }
+
+  /**
+   * Calcula la bandeja óptima y alternativas para un sector específico
+   * @param projectId ID del proyecto
+   * @param sectorId ID del sector
+   * @param userId ID del usuario (para verificar permisos)
+   * @returns Proyecto actualizado con los resultados del cálculo
+   */
+  async calculateSectorTray(
+    projectId: string,
+    sectorId: string,
+    userId: string,
+    calculateTrayDto?: CalculateTrayDto,
+  ): Promise<Project> {
+    const project = await this.findOne(projectId, userId);
+    const sectorIndex = project.sectors.findIndex(s => s._id.toString() === sectorId);
+    
+    if (sectorIndex === -1) {
+      throw new NotFoundException(`Sector with ID ${sectorId} not found in project ${projectId}`);
+    }
+    
+    const sector = project.sectors[sectorIndex];
+    
+    // Actualizar tipo de bandeja y porcentaje de reserva si se proporcionan
+    if (calculateTrayDto) {
+      sector.trayTypeSelection = calculateTrayDto.trayTypeSelection;
+      if (calculateTrayDto.reservePercentage !== undefined) {
+        sector.reservePercentage = calculateTrayDto.reservePercentage;
+      }
+      // Guardar los cambios en el proyecto
+      await project.save();
+    }
+    
+    // Verificar que el sector tenga toda la información necesaria
+    if (!sector.trayTypeSelection || !sector.installationLayerSelection) {
+      throw new BadRequestException('El sector debe tener un tipo de bandeja y una forma de instalación seleccionados');
+    }
+
+    // Verificar que haya cables en el sector
+    if (!sector.cablesInTray || sector.cablesInTray.length === 0) {
+      throw new BadRequestException('El sector debe tener cables agregados para realizar el cálculo');
+    }
+    
+    // Calcular la bandeja óptima usando el TrayCalculatorService
+    const results = await this.trayCalculatorService.calculateOptimalTray(
+      sector.trayTypeSelection,
+      sector.reservePercentage || 30,
+      sector.installationLayerSelection,
+      sector.cablesInTray,
+    );
+    
+    // Verificar si se encontraron bandejas adecuadas
+    if (!results.moreConvenientOption) {
+      throw new BadRequestException('No se encontraron bandejas que cumplan con los requisitos. Intente modificar los parámetros del sector o los cables.');
+    }
+    
+    // Actualizar los resultados en el sector
+    project.sectors[sectorIndex].results = results;
+    
+    // Guardar el proyecto actualizado
     return project.save();
   }
 }
