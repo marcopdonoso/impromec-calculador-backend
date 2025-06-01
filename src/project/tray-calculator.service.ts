@@ -58,9 +58,15 @@ export class TrayCalculatorService {
     if (installationLayer === 'singleLayer') {
       // Determinar si la disposición es horizontal o en trébol
       const horizontalArrangement = this.isHorizontalArrangement(cablesInTray);
+      console.log(`Disposición detectada: ${horizontalArrangement ? 'Horizontal' : 'Trébol'}`);
+      
+      // Calcular el área real de los cables sin factores adicionales
+      const rawCablesArea = this.calculateTotalArea(cablesInTray);
+      console.log(`Área real ocupada por los cables (sin factores): ${rawCablesArea}mm²`);
       
       if (horizontalArrangement) {
         // Instalación en una sola capa - horizontal
+        console.log('Calculando dimensiones para disposición horizontal...');
         const dimensions = this.calculateSingleLayerHorizontalDimensions(
           cablesInTray,
           trayType,
@@ -69,8 +75,10 @@ export class TrayCalculatorService {
         requiredWidth = dimensions.width;
         requiredHeight = dimensions.height;
         calculatedArea = dimensions.width * dimensions.height;
+        console.log(`Dimensiones horizontales calculadas: ${requiredWidth}mm x ${requiredHeight}mm = ${calculatedArea}mm²`);
       } else {
         // Instalación en una sola capa - trébol
+        console.log('Calculando dimensiones para disposición en trébol...');
         const dimensions = this.calculateSingleLayerCloverDimensions(
           cablesInTray,
           trayType,
@@ -79,6 +87,7 @@ export class TrayCalculatorService {
         requiredWidth = dimensions.width;
         requiredHeight = dimensions.height;
         calculatedArea = dimensions.width * dimensions.height;
+        console.log(`Dimensiones trébol calculadas: ${requiredWidth}mm x ${requiredHeight}mm = ${calculatedArea}mm²`);
       }
       
       // Para una sola capa, filtramos por ancho y alto
@@ -98,14 +107,28 @@ export class TrayCalculatorService {
         } as Results;
       }
 
+      console.log('Valores finales que se envían al selector:', {
+        requiredWidth,
+        requiredHeight,
+        calculatedLoad,
+        calculatedArea
+      });
+      
       // Seleccionar la bandeja óptima y alternativas para capa única
-      return this.selectOptimalTraysForSingleLayer(
+      const result = this.selectOptimalTraysForSingleLayer(
         suitableTrays, 
         requiredWidth,
         requiredHeight,
         calculatedLoad,
         calculatedArea
       );
+      
+      console.log('Resultado final devuelto:', {
+        load: result.calculatedLoadInKgM,
+        area: result.calculatedAreaInMM2
+      });
+      
+      return result;
       
     } else {
       // Instalación en multicapa - calcular área requerida
@@ -187,10 +210,8 @@ export class TrayCalculatorService {
       cable.cable.externalDiameterMM
     ));
     
-    // Para escalerilla, añadir altura adicional
-    if (trayType === 'escalerilla') {
-      maxHeight += this.LADDER_HEIGHT_REDUCTION;
-    }
+    // NOTA: No se aplica la reducción de altura útil de escalerilla en este paso,
+    // ya que estamos calculando la altura requerida para los cables
     
     return { width: totalWidth, height: maxHeight };
   }
@@ -203,35 +224,63 @@ export class TrayCalculatorService {
     trayType: TrayType,
     reservePercentage: number,
   ): { width: number, height: number } {
+    console.log('===== INICIO CÁLCULO DE DIMENSIONES TRÉBOL =====');
+    console.log('Datos de entrada:', {
+      cablesCount: cablesInTray.length,
+      cablesDetails: cablesInTray.map(c => ({
+        diameter: c.cable.externalDiameterMM,
+        area: c.cable.externalAreaMM2,
+        quantity: c.quantity,
+        arrangement: c.arrangement
+      })),
+      trayType,
+      reservePercentage
+    });
+    
     // Agrupar cables por diámetro
     const cablesByDiameter = this.groupCablesByDiameter(cablesInTray);
+    console.log('Cables agrupados por diámetro:', cablesByDiameter);
     
     // Calcular ancho total
     let totalWidth = 0;
+    console.log('Cálculo de ancho por grupos:');
     for (const [diameterKey, cables] of Object.entries(cablesByDiameter)) {
       const diameter = parseFloat(diameterKey);
       const totalQuantity = cables.reduce((sum, cable) => sum + cable.quantity, 0);
       
       // Calcular cuántos grupos de trébol se forman (cada 3 cables)
       const cloverGroups = Math.ceil(totalQuantity / 3);
+      const groupWidth = cloverGroups * 2 * diameter;
+      
+      console.log(`- Diámetro ${diameter}mm: ${totalQuantity} cables = ${cloverGroups} grupos x 2 x ${diameter}mm = ${groupWidth}mm`);
       
       // Cada grupo ocupa 2 veces el diámetro en ancho
-      totalWidth += cloverGroups * 2 * diameter;
+      totalWidth += groupWidth;
     }
+    console.log(`Ancho total básico: ${totalWidth}mm`);
     
     // Aplicar factor de seguridad y reserva al ancho
-    totalWidth = totalWidth * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
+    const widthWithFactors = totalWidth * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
+    console.log(`Ancho con factores: ${totalWidth} x ${this.DIMENSION_SAFETY_FACTOR} x (1 + ${reservePercentage}/100) = ${widthWithFactors}mm`);
+    totalWidth = widthWithFactors;
     
     // Altura = 2 veces el diámetro del cable más grande
     let maxDiameter = Math.max(...cablesInTray.map(cable => 
       cable.cable.externalDiameterMM
     ));
     let maxHeight = 2 * maxDiameter;
+    console.log(`Altura básica: 2 x ${maxDiameter}mm = ${maxHeight}mm`);
     
-    // Para escalerilla, añadir altura adicional
-    if (trayType === 'escalerilla') {
-      maxHeight += this.LADDER_HEIGHT_REDUCTION;
-    }
+    // NOTA: En este paso no se aplica la reducción de altura útil de escalerilla,
+    // ya que estamos calculando la altura total necesaria para los cables,
+    // no la altura útil disponible en la bandeja
+    console.log(`Altura final para disposición en trébol: ${maxHeight}mm`);
+    
+    // Calcular área resultante
+    const resultingArea = totalWidth * maxHeight;
+    console.log(`Área rectangular resultante: ${totalWidth} x ${maxHeight} = ${resultingArea}mm²`);
+    
+    console.log('===== FIN CÁLCULO DE DIMENSIONES TRÉBOL =====');
     
     return { width: totalWidth, height: maxHeight };
   }
@@ -322,7 +371,8 @@ export class TrayCalculatorService {
     return traySizesByLoad.filter(tray => {
       let usefulArea;
       if (trayType === 'escalerilla') {
-        const usefulHeight = Math.max(0, tray.height - this.LADDER_HEIGHT_REDUCTION);
+        // Para bandejas tipo escalerilla, el espacio útil es menor que la altura total debido a su estructura
+        const usefulHeight = tray.height - (tray.type === 'escalerilla' ? this.LADDER_HEIGHT_REDUCTION : 0);
         usefulArea = tray.width * usefulHeight;
       } else {
         usefulArea = tray.width * tray.height;
@@ -333,13 +383,16 @@ export class TrayCalculatorService {
   }
 
   /**
-   * Calcula el área útil de una bandeja considerando tipo
+   * Calcula el área útil de una bandeja considerando su tipo
    */
   private calculateUsefulArea(tray: CableTray): number {
     if (tray.type === 'escalerilla') {
+      // Para bandejas tipo escalerilla, debemos considerar que parte de la altura
+      // se ocupa por la estructura misma de la bandeja
       const usefulHeight = Math.max(0, tray.height - this.LADDER_HEIGHT_REDUCTION);
       return tray.width * usefulHeight;
     } else {
+      // Para bandejas tipo canal, toda el área está disponible
       return tray.width * tray.height;
     }
   }
@@ -407,7 +460,15 @@ export class TrayCalculatorService {
     calculatedLoad: number, 
     calculatedArea: number
   ): Results {
+    console.log('===== CREANDO RESULTADOS FINALES =====');
+    console.log('Valores recibidos:', {
+      bandejasSugeridas: sortedTrays.length,
+      calculatedLoad,
+      calculatedArea
+    });
+    
     if (sortedTrays.length === 0) {
+      console.log('No hay bandejas adecuadas disponibles');
       return {
         moreConvenientOption: null,
         otherRecommendedOptions: [],
@@ -418,77 +479,87 @@ export class TrayCalculatorService {
     
     // La primera es la óptima
     const optimalTray = this.convertToTrayModel(sortedTrays[0]);
+    console.log('Bandeja óptima seleccionada:', optimalTray);
     
     // Las siguientes son alternativas (máximo 3)
     const alternativeTrays = sortedTrays.slice(1, 4).map(tray => 
       this.convertToTrayModel(tray)
     );
+    console.log(`${alternativeTrays.length} bandejas alternativas seleccionadas`);
     
-    return {
+    const result = {
       moreConvenientOption: optimalTray,
       otherRecommendedOptions: alternativeTrays,
       calculatedLoadInKgM: calculatedLoad,
       calculatedAreaInMM2: calculatedArea
     } as Results;
+    
+    console.log('Valores finales en el resultado:', {
+      load: result.calculatedLoadInKgM,
+      area: result.calculatedAreaInMM2
+    });
+    console.log('===== FIN CREACIÓN DE RESULTADOS =====');
+    
+    return result;
   }
 
   /**
- * Convierte una bandeja del catálogo a modelo Tray
- */
-private convertToTrayModel(catalogTray: CableTray): Tray {
-  // Mapear categoría del catálogo al formato esperado por el frontend
-  const categoryMap: Record<string, TrayCategory> = {
-    'super liviana': 'super-liviana',
-    'superliviana': 'super-liviana',
-    'super-liviana': 'super-liviana',
-    'liviana': 'liviana',
-    'semi-pesada': 'semi-pesada',
-    'semi pesada': 'semi-pesada',
-    'semi pesadas': 'semi-pesada',  // Variante encontrada en la base de datos
-    'semipesada': 'semi-pesada',
-    'pesada': 'pesada',
-    'super pesada': 'super-pesada',
-    'superpesada': 'super-pesada',
-    'super-pesada': 'super-pesada'
-  };
-  
-  // Normalizar la categoría entrante (a minúsculas y sin espacios extras)
-  const normalizedCategory = catalogTray.category?.toLowerCase().trim() || '';
-  
-  // Log para depurar qué categoría exacta viene del catálogo
-  console.log(`Categoría original de bandeja: '${catalogTray.category}'`);
-  console.log(`Categoría normalizada: '${normalizedCategory}'`);
-  
-  // Intentar encontrar una coincidencia exacta primero
-  let trayCategory = categoryMap[normalizedCategory];
-  
-  // Si no hay coincidencia exacta, buscar por coincidencia parcial
-  if (!trayCategory) {
-    for (const [key, value] of Object.entries(categoryMap)) {
-      if (normalizedCategory.includes(key) || key.includes(normalizedCategory)) {
-        trayCategory = value;
-        console.log(`Coincidencia parcial encontrada: '${key}' -> '${value}'`);
-        break;
+   * Convierte una bandeja del catálogo a modelo Tray
+   */
+  private convertToTrayModel(catalogTray: CableTray): Tray {
+    // Mapear categoría del catálogo al formato esperado por el frontend
+    const categoryMap: Record<string, TrayCategory> = {
+      'super liviana': 'super-liviana',
+      'superliviana': 'super-liviana',
+      'super-liviana': 'super-liviana',
+      'liviana': 'liviana',
+      'semi-pesada': 'semi-pesada',
+      'semi pesada': 'semi-pesada',
+      'semi pesadas': 'semi-pesada',  // Variante encontrada en la base de datos
+      'semipesada': 'semi-pesada',
+      'pesada': 'pesada',
+      'super pesada': 'super-pesada',
+      'superpesada': 'super-pesada',
+      'super-pesada': 'super-pesada'
+    };
+    
+    // Normalizar la categoría entrante (a minúsculas y sin espacios extras)
+    const normalizedCategory = catalogTray.category?.toLowerCase().trim() || '';
+    
+    // Log para depurar qué categoría exacta viene del catálogo
+    console.log(`Categoría original de bandeja: '${catalogTray.category}'`);
+    console.log(`Categoría normalizada: '${normalizedCategory}'`);
+    
+    // Intentar encontrar una coincidencia exacta primero
+    let trayCategory = categoryMap[normalizedCategory];
+    
+    // Si no hay coincidencia exacta, buscar por coincidencia parcial
+    if (!trayCategory) {
+      for (const [key, value] of Object.entries(categoryMap)) {
+        if (normalizedCategory.includes(key) || key.includes(normalizedCategory)) {
+          trayCategory = value;
+          console.log(`Coincidencia parcial encontrada: '${key}' -> '${value}'`);
+          break;
+        }
       }
     }
-  }
-  
-  // Si aún no hay coincidencia, usar el valor por defecto
-  if (!trayCategory) {
-    console.log('No se encontró coincidencia para la categoría, usando valor por defecto: liviana');
-    trayCategory = 'liviana';
-  }
-  
-  return {
-    id: catalogTray._id.toString(),
-    trayType: catalogTray.type,
-    trayCategory: trayCategory,
-    technicalDetails: {
-      thicknessInMM: catalogTray.thickness,
-      widthInMM: catalogTray.width,
-      heightInMM: catalogTray.height,
-      loadResistanceInKgM: catalogTray.loadCapacity
+    
+    // Si aún no hay coincidencia, usar el valor por defecto
+    if (!trayCategory) {
+      console.log('No se encontró coincidencia para la categoría, usando valor por defecto: liviana');
+      trayCategory = 'liviana';
     }
-  } as Tray;
+    
+    return {
+      id: catalogTray._id.toString(),
+      trayType: catalogTray.type,
+      trayCategory: trayCategory,
+      technicalDetails: {
+        thicknessInMM: catalogTray.thickness,
+        widthInMM: catalogTray.width,
+        heightInMM: catalogTray.height,
+        loadResistanceInKgM: catalogTray.loadCapacity
+      }
+    } as Tray;
   }
 }

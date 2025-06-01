@@ -322,24 +322,39 @@ export class ProjectService {
     const generalSector = project.sectors[generalSectorIndex];
     const generalSectorId = generalSector._id.toString();
 
-    // Actualizar los parámetros del sector General directamente en la base de datos
-    await this.projectModel
-      .updateOne(
-        { _id: projectId, user: userId, 'sectors._id': generalSectorId },
-        {
-          $set: {
-            'sectors.$.trayTypeSelection': calculateTrayDto.trayTypeSelection,
-            'sectors.$.reservePercentage':
-              calculateTrayDto.reservePercentage !== undefined
-                ? calculateTrayDto.reservePercentage
-                : 30,
-          },
-        },
-      )
-      .exec();
+    // Actualizar los parámetros del sector General si se proporcionaron en el DTO
+    if (calculateTrayDto && (calculateTrayDto.trayTypeSelection || calculateTrayDto.reservePercentage !== undefined)) {
+      const updateFields = {};
+      
+      // Solo actualizar los campos que se proporcionaron en el DTO
+      if (calculateTrayDto.trayTypeSelection) {
+        updateFields['sectors.$.trayTypeSelection'] = calculateTrayDto.trayTypeSelection;
+      }
+      
+      if (calculateTrayDto.reservePercentage !== undefined) {
+        updateFields['sectors.$.reservePercentage'] = calculateTrayDto.reservePercentage;
+      }
+      
+      // Actualizar solo si hay campos para actualizar
+      if (Object.keys(updateFields).length > 0) {
+        await this.projectModel
+          .updateOne(
+            { _id: projectId, user: userId, 'sectors._id': generalSectorId },
+            { $set: updateFields },
+          )
+          .exec();
+        
+        console.log('Parámetros actualizados:', updateFields);
+      } else {
+        console.log('No se proporcionaron parámetros para actualizar, usando valores existentes');
+      }
+    } else {
+      console.log('No se proporcionó DTO o está vacío, usando valores existentes');
+    }
 
     // Ahora llamar al método para calcular la bandeja con los parámetros actualizados
-    return this.calculateSectorTray(projectId, generalSectorId, userId, calculateTrayDto);
+    // Pasamos un objeto vacío como DTO para forzar que se realice el cálculo
+    return this.calculateSectorTray(projectId, generalSectorId, userId, {});
   }
 
   /**
@@ -347,70 +362,75 @@ export class ProjectService {
    * @param projectId ID del proyecto
    * @param sectorId ID del sector
    * @param userId ID del usuario (para verificar permisos)
-   * @param calculateTrayDto DTO con los parámetros para el cálculo (opcional)
+   * @returns Proyecto actualizado con los resultados del cálculo
+   */
+  /**
+   * Calcula la bandeja óptima y alternativas para un sector específico
+   * @param projectId ID del proyecto
+   * @param sectorId ID del sector
+   * @param userId ID del usuario (para verificar permisos)
+   * @param calculateTrayDto DTO opcional con parámetros para el cálculo
    * @returns Proyecto actualizado con los resultados del cálculo
    */
   async calculateSectorTray(
-    projectId: string, 
-    sectorId: string, 
+    projectId: string,
+    sectorId: string,
     userId: string,
-    calculateTrayDto?: CalculateTrayDto
+    calculateTrayDto?: CalculateTrayDto,
   ): Promise<Project> {
-    // Paso 1: Actualizar los parámetros del sector si se proporcionan en el DTO
-    if (calculateTrayDto) {
-      console.log('Actualizando parámetros del sector:', calculateTrayDto);
-      // Actualizar primero los parámetros del sector en la base de datos
-      await this.projectModel.updateOne(
-        { _id: projectId, user: userId, "sectors._id": sectorId },
-        { 
-          $set: { 
-            "sectors.$.trayTypeSelection": calculateTrayDto.trayTypeSelection,
-            "sectors.$.reservePercentage": calculateTrayDto.reservePercentage
-          } 
-        }
-      ).exec();
-    }
-    
-    // Paso 2: Obtener el proyecto actualizado para trabajar con los valores más recientes
     const project = await this.findOne(projectId, userId);
-    
-    const sectorIndex = project.sectors.findIndex(s => s._id.toString() === sectorId);
-    if (sectorIndex === -1) {
-      throw new NotFoundException(`Sector with ID ${sectorId} not found in project ${projectId}`);
-    }
-    
-    const sector = project.sectors[sectorIndex];
-    
-    // Paso 3: Verificar que el sector tenga cables agregados
-    if (!sector.cablesInTray || sector.cablesInTray.length === 0) {
-      throw new BadRequestException('El sector debe tener cables agregados para realizar el cálculo');
-    }
-    
-    // Paso 4: Calcular la bandeja óptima usando el TrayCalculatorService
-    const results = await this.trayCalculatorService.calculateOptimalTray(
-      sector.trayTypeSelection,
-      sector.reservePercentage || 30,
-      sector.installationLayerSelection,
-      sector.cablesInTray,
+    const sectorIndex = project.sectors.findIndex(
+      (s) => s._id.toString() === sectorId,
     );
 
-    // Verificar los valores calculados
-    console.log('Valores calculados a guardar:', {
-      load: results.calculatedLoadInKgM,
-      area: results.calculatedAreaInMM2,
-      reservePercentage: sector.reservePercentage,
-      trayType: sector.trayTypeSelection
-    });
-
-    // Verificar si se encontraron bandejas adecuadas
-    if (!results.moreConvenientOption) {
-      throw new BadRequestException(
-        'No se encontraron bandejas que cumplan con los requisitos. Intente modificar los parámetros del sector o los cables.',
+    if (sectorIndex === -1) {
+      throw new NotFoundException(
+        `Sector with ID ${sectorId} not found in project ${projectId}`,
       );
     }
 
-    // Paso 5: Guardar los resultados en la base de datos
+    const sector = project.sectors[sectorIndex];
+
+    // Verificar que haya cables agregados para realizar el cálculo
+    if (!sector.cablesInTray || sector.cablesInTray.length === 0) {
+      throw new BadRequestException(
+        'El sector debe tener cables agregados para realizar el cálculo',
+      );
+    }
+
+    // Actualizar parámetros si se proporcionaron en el DTO
+    if (calculateTrayDto?.trayTypeSelection) {
+      sector.trayTypeSelection = calculateTrayDto.trayTypeSelection;
+    }
+    
+    if (calculateTrayDto?.reservePercentage !== undefined) {
+      sector.reservePercentage = calculateTrayDto.reservePercentage;
+    }
+    
     try {
+      // Calcular la bandeja óptima usando el TrayCalculatorService
+      const results = await this.trayCalculatorService.calculateOptimalTray(
+        sector.trayTypeSelection,
+        sector.reservePercentage || 30,
+        sector.installationLayerSelection,
+        sector.cablesInTray,
+      );
+
+      // Verificar los valores calculados
+      console.log('Valores calculados a guardar:', {
+        load: results.calculatedLoadInKgM,
+        area: results.calculatedAreaInMM2,
+        reservePercentage: sector.reservePercentage,
+        trayType: sector.trayTypeSelection
+      });
+
+      // Verificar si se encontraron bandejas adecuadas
+      if (!results.moreConvenientOption) {
+        throw new BadRequestException(
+          'No se encontraron bandejas que cumplan con los requisitos. Intente modificar los parámetros del sector o los cables.',
+        );
+      }
+
       // Asegurarnos de convertir a números antes de guardar
       const loadValue = Number(results.calculatedLoadInKgM || 0);
       const areaValue = Number(results.calculatedAreaInMM2 || 0);

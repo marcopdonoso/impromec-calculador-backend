@@ -7,11 +7,13 @@ export class CalculateTrayDto {
     description: 'Tipo de bandeja a utilizar',
     enum: ['escalerilla', 'canal'],
     example: 'escalerilla',
+    required: false,
   })
   @IsEnum(['escalerilla', 'canal'], {
     message: 'El tipo de bandeja debe ser "escalerilla" o "canal"',
   })
-  trayTypeSelection: TrayType;
+  @IsOptional()
+  trayTypeSelection?: TrayType;
 
   @ApiProperty({
     description: 'Porcentaje de reserva para futuros cables',

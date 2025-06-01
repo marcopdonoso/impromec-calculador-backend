@@ -1,24 +1,29 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
-  UseGuards,
-  Request,
+  Get,
   NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
-import { ProjectService } from './project.service';
-import { CreateProjectDto } from './dto/create-project.dto';
-import { UpdateProjectDto } from './dto/update-project.dto';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CreateSectorDto } from './dto/create-sector.dto';
 import { CalculateTrayDto } from './dto/calculate-tray.dto';
-import { UpdateSectorDto } from './dto/update-sector.dto';
 import { CreateCableInTrayDto } from './dto/create-cable.dto';
+import { CreateProjectDto } from './dto/create-project.dto';
+import { CreateSectorDto } from './dto/create-sector.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
+import { UpdateSectorDto } from './dto/update-sector.dto';
+import { ProjectService } from './project.service';
 
 @ApiTags('projects')
 @Controller('projects')
@@ -29,10 +34,16 @@ export class ProjectController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new project' })
-  @ApiResponse({ status: 201, description: 'The project has been successfully created.' })
+  @ApiResponse({
+    status: 201,
+    description: 'The project has been successfully created.',
+  })
   async create(@Body() createProjectDto: CreateProjectDto, @Request() req) {
-    const newProject = await this.projectService.create(createProjectDto, req.user);
-    
+    const newProject = await this.projectService.create(
+      createProjectDto,
+      req.user,
+    );
+
     const response = {
       success: true,
       message: 'Proyecto creado exitosamente',
@@ -41,19 +52,23 @@ export class ProjectController {
         projectName: newProject.projectName,
         projectCompany: newProject.projectCompany,
         projectLocation: newProject.projectLocation,
-        hasSectors: createProjectDto.hasSectors || false
-      }
+        hasSectors: createProjectDto.hasSectors || false,
+      },
     };
-    
+
     // Si el proyecto no tiene sectores, incluir información sobre el sector por defecto
-    if (createProjectDto.hasSectors === false && newProject.sectors && newProject.sectors.length > 0) {
+    if (
+      createProjectDto.hasSectors === false &&
+      newProject.sectors &&
+      newProject.sectors.length > 0
+    ) {
       const defaultSector = newProject.sectors[0];
       response.project['defaultSector'] = {
         id: defaultSector._id,
-        sectorName: defaultSector.sectorName
+        sectorName: defaultSector.sectorName,
       };
     }
-    
+
     return response;
   }
 
@@ -61,30 +76,30 @@ export class ProjectController {
   @ApiOperation({ summary: 'Get all projects for the authenticated user' })
   async findAll(@Request() req) {
     const allProjects = await this.projectService.findAll(req.user.sub);
-    
+
     // Transformar los proyectos para incluir solo los datos necesarios
-    const simplifiedProjects = allProjects.map(project => {
+    const simplifiedProjects = allProjects.map((project) => {
       // Determinar si es un proyecto sin sectores (con sector por defecto "General")
-      const isNonSectoredProject = 
-        project.sectors.length === 1 && 
+      const isNonSectoredProject =
+        project.sectors.length === 1 &&
         project.sectors[0].sectorName === 'General';
-      
+
       // Convertir el documento de Mongoose a un objeto JavaScript plano
       const projectObj = project.toObject();
-      
+
       return {
         id: projectObj._id,
         projectName: projectObj.projectName,
         hasSectors: !isNonSectoredProject,
         sectorsCount: isNonSectoredProject ? 0 : projectObj.sectors.length,
         createdAt: projectObj.createdAt,
-        updatedAt: projectObj.updatedAt
+        updatedAt: projectObj.updatedAt,
       };
     });
-    
+
     return {
       success: true,
-      projects: simplifiedProjects
+      projects: simplifiedProjects,
     };
   }
 
@@ -92,13 +107,13 @@ export class ProjectController {
   @ApiOperation({ summary: 'Get a specific project by ID' })
   async findOne(@Param('id') id: string, @Request() req) {
     const project = await this.projectService.findOne(id, req.user.sub);
-    
+
     // Determinar si es un proyecto sin sectores personalizados
     // (tiene exactamente un sector llamado "General")
-    const isNonSectoredProject = 
-      project.sectors.length === 1 && 
+    const isNonSectoredProject =
+      project.sectors.length === 1 &&
       project.sectors[0].sectorName === 'General';
-    
+
     const response = {
       success: true,
       project: {
@@ -106,44 +121,43 @@ export class ProjectController {
         projectName: project.projectName,
         projectCompany: project.projectCompany,
         projectLocation: project.projectLocation,
-        hasSectors: !isNonSectoredProject
+        hasSectors: !isNonSectoredProject,
         // Nota: MongoDB agrega automáticamente createdAt y updatedAt, pero TypeScript no los reconoce
         // Si necesitas estas propiedades, considera agregarlas al esquema o usar una aserción de tipo
-      }
+      },
     };
-    
+
     if (isNonSectoredProject) {
-      // Para proyectos sin sectores, incluir información básica del sector por defecto para referencia
-      // y colocar la configuración y resultados directamente en el objeto del proyecto
+      // Para proyectos sin sectores, incluir información sobre el sector por defecto
+      // y sus cables directamente en el objeto del proyecto
       const defaultSector = project.sectors[0];
-      
-      // Incluir ID y nombre del sector por defecto para referencia
       response.project['defaultSector'] = {
         id: defaultSector._id,
-        sectorName: defaultSector.sectorName
+        sectorName: defaultSector.sectorName,
       };
       
-      // Colocar configuración y resultados directamente en el objeto del proyecto
+      // Incluir parámetros de bandeja y resultados directamente en el proyecto
       response.project['trayTypeSelection'] = defaultSector.trayTypeSelection;
       response.project['reservePercentage'] = defaultSector.reservePercentage;
       response.project['installationLayerSelection'] = defaultSector.installationLayerSelection;
       response.project['cablesCount'] = defaultSector.cablesInTray ? defaultSector.cablesInTray.length : 0;
       response.project['results'] = defaultSector.results;
-      
-      // Incluir los cables directamente en el objeto del proyecto
+
       if (defaultSector.cablesInTray && defaultSector.cablesInTray.length > 0) {
-        response.project['cables'] = defaultSector.cablesInTray.map(cable => ({
-          id: cable._id,
-          cable: cable.cable,
-          quantity: cable.quantity,
-          arrangement: cable.arrangement
-        }));
+        response.project['cables'] = defaultSector.cablesInTray.map(
+          (cable) => ({
+            id: cable._id,
+            cable: cable.cable,
+            quantity: cable.quantity,
+            arrangement: cable.arrangement,
+          }),
+        );
       } else {
         response.project['cables'] = [];
       }
     } else {
       // Para proyectos con sectores personalizados, incluir el array de sectores completo con sus cables
-      response.project['sectors'] = project.sectors.map(sector => {
+      response.project['sectors'] = project.sectors.map((sector) => {
         const sectorData = {
           id: sector._id,
           sectorName: sector.sectorName,
@@ -152,38 +166,42 @@ export class ProjectController {
           installationLayerSelection: sector.installationLayerSelection,
           cablesCount: sector.cablesInTray ? sector.cablesInTray.length : 0,
           results: sector.results,
-          cables: []
+          cables: [],
         };
-        
+
         // Incluir los cables de cada sector
         if (sector.cablesInTray && sector.cablesInTray.length > 0) {
-          sectorData.cables = sector.cablesInTray.map(cable => ({
+          sectorData.cables = sector.cablesInTray.map((cable) => ({
             id: cable._id,
             cable: cable.cable,
             quantity: cable.quantity,
-            arrangement: cable.arrangement
+            arrangement: cable.arrangement,
           }));
         }
-        
+
         return sectorData;
       });
     }
-    
+
     return response;
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a project' })
   async update(
-    @Param('id') id: string, 
-    @Body() updateProjectDto: UpdateProjectDto, 
-    @Request() req
+    @Param('id') id: string,
+    @Body() updateProjectDto: UpdateProjectDto,
+    @Request() req,
   ) {
-    const updatedProject = await this.projectService.update(id, updateProjectDto, req.user.sub);
+    const updatedProject = await this.projectService.update(
+      id,
+      updateProjectDto,
+      req.user.sub,
+    );
     return {
       success: true,
       message: 'Proyecto actualizado exitosamente',
-      project: updatedProject
+      project: updatedProject,
     };
   }
 
@@ -193,7 +211,7 @@ export class ProjectController {
     await this.projectService.remove(id, req.user.sub);
     return {
       success: true,
-      message: 'Proyecto eliminado exitosamente'
+      message: 'Proyecto eliminado exitosamente',
     };
   }
 
@@ -201,26 +219,30 @@ export class ProjectController {
   @Post(':id/sectors')
   @ApiOperation({ summary: 'Add a sector to a project' })
   async addSector(
-    @Param('id') id: string, 
-    @Body() createSectorDto: CreateSectorDto, 
-    @Request() req
+    @Param('id') id: string,
+    @Body() createSectorDto: CreateSectorDto,
+    @Request() req,
   ) {
-    const updatedProject = await this.projectService.addSector(id, createSectorDto, req.user.sub);
+    const updatedProject = await this.projectService.addSector(
+      id,
+      createSectorDto,
+      req.user.sub,
+    );
     const newSector = updatedProject.sectors[updatedProject.sectors.length - 1];
-    
+
     return {
       success: true,
       message: 'Sector creado exitosamente',
       sector: {
         id: newSector._id,
         sectorName: newSector.sectorName,
-        projectId: updatedProject._id
+        projectId: updatedProject._id,
       },
       project: {
         id: updatedProject._id,
         projectName: updatedProject.projectName,
-        sectorsCount: updatedProject.sectors.length
-      }
+        sectorsCount: updatedProject.sectors.length,
+      },
     };
   }
 
@@ -232,14 +254,21 @@ export class ProjectController {
     @Body() updateSectorDto: UpdateSectorDto,
     @Request() req,
   ) {
-    const updatedProject = await this.projectService.updateSector(id, sectorId, updateSectorDto, req.user.sub);
-    
+    const updatedProject = await this.projectService.updateSector(
+      id,
+      sectorId,
+      updateSectorDto,
+      req.user.sub,
+    );
+
     // Encontrar el sector actualizado
-    const updatedSector = updatedProject.sectors.find(s => s._id.toString() === sectorId);
+    const updatedSector = updatedProject.sectors.find(
+      (s) => s._id.toString() === sectorId,
+    );
     if (!updatedSector) {
       throw new NotFoundException(`Sector with ID ${sectorId} not found`);
     }
-    
+
     return {
       success: true,
       message: 'Sector actualizado exitosamente',
@@ -249,12 +278,14 @@ export class ProjectController {
         trayTypeSelection: updatedSector.trayTypeSelection,
         reservePercentage: updatedSector.reservePercentage,
         installationLayerSelection: updatedSector.installationLayerSelection,
-        cablesCount: updatedSector.cablesInTray ? updatedSector.cablesInTray.length : 0
+        cablesCount: updatedSector.cablesInTray
+          ? updatedSector.cablesInTray.length
+          : 0,
       },
       project: {
         id: updatedProject._id,
-        projectName: updatedProject.projectName
-      }
+        projectName: updatedProject.projectName,
+      },
     };
   }
 
@@ -265,49 +296,64 @@ export class ProjectController {
     @Param('sectorId') sectorId: string,
     @Request() req,
   ) {
-    const updatedProject = await this.projectService.removeSector(id, sectorId, req.user.sub);
-    
+    const updatedProject = await this.projectService.removeSector(
+      id,
+      sectorId,
+      req.user.sub,
+    );
+
     return {
       success: true,
       message: 'Sector eliminado exitosamente',
       project: {
         id: updatedProject._id,
         projectName: updatedProject.projectName,
-        sectorsCount: updatedProject.sectors.length
-      }
+        sectorsCount: updatedProject.sectors.length,
+      },
     };
   }
 
   // Endpoints para manejar cables directamente en el proyecto (usa el sector por defecto)
   @Post(':id/cables')
-  @ApiOperation({ summary: 'Add a cable directly to a project (uses default sector)' })
+  @ApiOperation({
+    summary: 'Add a cable directly to a project (uses default sector)',
+  })
   async addCableToProject(
     @Param('id') id: string,
     @Body() cableData: CreateCableInTrayDto,
     @Request() req,
   ) {
     const project = await this.projectService.findOne(id, req.user.sub);
-    
+
     // Verificar si el proyecto no tiene sectores personalizados
     if (project.sectors.length === 0) {
       throw new NotFoundException('El proyecto no tiene un sector por defecto');
     }
-    
+
     // Usar el primer sector como sector por defecto
     const defaultSectorId = project.sectors[0]._id.toString();
-    
+
     // Reutilizar el método existente para agregar un cable a un sector
-    const updatedProject = await this.projectService.addCableToSector(id, defaultSectorId, cableData, req.user.sub);
-    
+    const updatedProject = await this.projectService.addCableToSector(
+      id,
+      defaultSectorId,
+      cableData,
+      req.user.sub,
+    );
+
     // Encontrar el sector actualizado
-    const sector = updatedProject.sectors.find(s => s._id.toString() === defaultSectorId);
+    const sector = updatedProject.sectors.find(
+      (s) => s._id.toString() === defaultSectorId,
+    );
     if (!sector) {
-      throw new NotFoundException(`Sector with ID ${defaultSectorId} not found`);
+      throw new NotFoundException(
+        `Sector with ID ${defaultSectorId} not found`,
+      );
     }
-    
+
     // Obtener el cable recién agregado
     const newCable = sector.cablesInTray[sector.cablesInTray.length - 1];
-    
+
     return {
       success: true,
       message: 'Cable agregado exitosamente al proyecto',
@@ -315,18 +361,20 @@ export class ProjectController {
         id: newCable._id,
         cable: newCable.cable,
         quantity: newCable.quantity,
-        arrangement: newCable.arrangement
+        arrangement: newCable.arrangement,
       },
       project: {
         id: updatedProject._id,
         projectName: updatedProject.projectName,
-        cablesCount: sector.cablesInTray.length
-      }
+        cablesCount: sector.cablesInTray.length,
+      },
     };
   }
 
   @Patch(':id/cables/:cableId')
-  @ApiOperation({ summary: 'Update a cable directly in a project (uses default sector)' })
+  @ApiOperation({
+    summary: 'Update a cable directly in a project (uses default sector)',
+  })
   async updateCableInProject(
     @Param('id') id: string,
     @Param('cableId') cableId: string,
@@ -334,36 +382,42 @@ export class ProjectController {
     @Request() req,
   ) {
     const project = await this.projectService.findOne(id, req.user.sub);
-    
+
     // Verificar si el proyecto tiene sectores
     if (project.sectors.length === 0) {
       throw new NotFoundException('El proyecto no tiene un sector por defecto');
     }
-    
+
     // Usar el primer sector como sector por defecto
     const defaultSectorId = project.sectors[0]._id.toString();
-    
+
     // Reutilizar el método existente para actualizar un cable en un sector
     const updatedProject = await this.projectService.updateCableInSector(
-      id, 
-      defaultSectorId, 
-      cableId, 
-      cableData, 
-      req.user.sub
+      id,
+      defaultSectorId,
+      cableId,
+      cableData,
+      req.user.sub,
     );
-    
+
     // Encontrar el sector actualizado
-    const sector = updatedProject.sectors.find(s => s._id.toString() === defaultSectorId);
+    const sector = updatedProject.sectors.find(
+      (s) => s._id.toString() === defaultSectorId,
+    );
     if (!sector) {
-      throw new NotFoundException(`Sector with ID ${defaultSectorId} not found`);
+      throw new NotFoundException(
+        `Sector with ID ${defaultSectorId} not found`,
+      );
     }
-    
+
     // Encontrar el cable actualizado
-    const updatedCable = sector.cablesInTray.find(c => c._id.toString() === cableId);
+    const updatedCable = sector.cablesInTray.find(
+      (c) => c._id.toString() === cableId,
+    );
     if (!updatedCable) {
       throw new NotFoundException(`Cable with ID ${cableId} not found`);
     }
-    
+
     return {
       success: true,
       message: 'Cable actualizado exitosamente',
@@ -371,58 +425,64 @@ export class ProjectController {
         id: updatedCable._id,
         cable: updatedCable.cable,
         quantity: updatedCable.quantity,
-        arrangement: updatedCable.arrangement
+        arrangement: updatedCable.arrangement,
       },
       project: {
         id: updatedProject._id,
         projectName: updatedProject.projectName,
-        cablesCount: sector.cablesInTray.length
-      }
+        cablesCount: sector.cablesInTray.length,
+      },
     };
   }
 
   @Delete(':id/cables/:cableId')
-  @ApiOperation({ summary: 'Remove a cable directly from a project (uses default sector)' })
+  @ApiOperation({
+    summary: 'Remove a cable directly from a project (uses default sector)',
+  })
   async removeCableFromProject(
     @Param('id') id: string,
     @Param('cableId') cableId: string,
     @Request() req,
   ) {
     const project = await this.projectService.findOne(id, req.user.sub);
-    
+
     // Verificar si el proyecto tiene sectores
     if (project.sectors.length === 0) {
       throw new NotFoundException('El proyecto no tiene un sector por defecto');
     }
-    
+
     // Usar el primer sector como sector por defecto
     const defaultSectorId = project.sectors[0]._id.toString();
-    
+
     // Reutilizar el método existente para eliminar un cable de un sector
     const updatedProject = await this.projectService.removeCableFromSector(
-      id, 
-      defaultSectorId, 
-      cableId, 
-      req.user.sub
+      id,
+      defaultSectorId,
+      cableId,
+      req.user.sub,
     );
-    
+
     // Encontrar el sector actualizado
-    const sector = updatedProject.sectors.find(s => s._id.toString() === defaultSectorId);
+    const sector = updatedProject.sectors.find(
+      (s) => s._id.toString() === defaultSectorId,
+    );
     if (!sector) {
-      throw new NotFoundException(`Sector with ID ${defaultSectorId} not found`);
+      throw new NotFoundException(
+        `Sector with ID ${defaultSectorId} not found`,
+      );
     }
-    
+
     return {
       success: true,
       message: 'Cable eliminado exitosamente',
       project: {
         id: updatedProject._id,
         projectName: updatedProject.projectName,
-        cablesCount: sector.cablesInTray.length
-      }
+        cablesCount: sector.cablesInTray.length,
+      },
     };
   }
-  
+
   // Endpoints para manejar cables en un sector
   @Post(':id/sectors/:sectorId/cables')
   @ApiOperation({ summary: 'Add a cable to a sector' })
@@ -432,17 +492,24 @@ export class ProjectController {
     @Body() cableData: CreateCableInTrayDto,
     @Request() req,
   ) {
-    const updatedProject = await this.projectService.addCableToSector(id, sectorId, cableData, req.user.sub);
-    
+    const updatedProject = await this.projectService.addCableToSector(
+      id,
+      sectorId,
+      cableData,
+      req.user.sub,
+    );
+
     // Encontrar el sector actualizado
-    const sector = updatedProject.sectors.find(s => s._id.toString() === sectorId);
+    const sector = updatedProject.sectors.find(
+      (s) => s._id.toString() === sectorId,
+    );
     if (!sector) {
       throw new NotFoundException(`Sector with ID ${sectorId} not found`);
     }
-    
+
     // Obtener el cable recién agregado
     const newCable = sector.cablesInTray[sector.cablesInTray.length - 1];
-    
+
     return {
       success: true,
       message: 'Cable agregado exitosamente al sector',
@@ -450,17 +517,17 @@ export class ProjectController {
         id: newCable._id,
         cable: newCable.cable,
         quantity: newCable.quantity,
-        arrangement: newCable.arrangement
+        arrangement: newCable.arrangement,
       },
       sector: {
         id: sector._id,
         sectorName: sector.sectorName,
-        cablesCount: sector.cablesInTray.length
+        cablesCount: sector.cablesInTray.length,
       },
       project: {
         id: updatedProject._id,
-        projectName: updatedProject.projectName
-      }
+        projectName: updatedProject.projectName,
+      },
     };
   }
 
@@ -474,25 +541,29 @@ export class ProjectController {
     @Request() req,
   ) {
     const updatedProject = await this.projectService.updateCableInSector(
-      id, 
-      sectorId, 
-      cableId, 
-      cableData, 
-      req.user.sub
+      id,
+      sectorId,
+      cableId,
+      cableData,
+      req.user.sub,
     );
-    
+
     // Encontrar el sector actualizado
-    const sector = updatedProject.sectors.find(s => s._id.toString() === sectorId);
+    const sector = updatedProject.sectors.find(
+      (s) => s._id.toString() === sectorId,
+    );
     if (!sector) {
       throw new NotFoundException(`Sector with ID ${sectorId} not found`);
     }
-    
+
     // Encontrar el cable actualizado
-    const updatedCable = sector.cablesInTray.find(c => c._id.toString() === cableId);
+    const updatedCable = sector.cablesInTray.find(
+      (c) => c._id.toString() === cableId,
+    );
     if (!updatedCable) {
       throw new NotFoundException(`Cable with ID ${cableId} not found`);
     }
-    
+
     return {
       success: true,
       message: 'Cable actualizado exitosamente',
@@ -500,13 +571,13 @@ export class ProjectController {
         id: updatedCable._id,
         cable: updatedCable.cable,
         quantity: updatedCable.quantity,
-        arrangement: updatedCable.arrangement
+        arrangement: updatedCable.arrangement,
       },
       sector: {
         id: sector._id,
         sectorName: sector.sectorName,
-        cablesCount: sector.cablesInTray.length
-      }
+        cablesCount: sector.cablesInTray.length,
+      },
     };
   }
 
@@ -519,30 +590,32 @@ export class ProjectController {
     @Request() req,
   ) {
     const updatedProject = await this.projectService.removeCableFromSector(
-      id, 
-      sectorId, 
-      cableId, 
-      req.user.sub
+      id,
+      sectorId,
+      cableId,
+      req.user.sub,
     );
-    
+
     // Encontrar el sector actualizado
-    const sector = updatedProject.sectors.find(s => s._id.toString() === sectorId);
+    const sector = updatedProject.sectors.find(
+      (s) => s._id.toString() === sectorId,
+    );
     if (!sector) {
       throw new NotFoundException(`Sector with ID ${sectorId} not found`);
     }
-    
+
     return {
       success: true,
       message: 'Cable eliminado exitosamente',
       sector: {
         id: sector._id,
         sectorName: sector.sectorName,
-        cablesCount: sector.cablesInTray.length
+        cablesCount: sector.cablesInTray.length,
       },
       project: {
         id: updatedProject._id,
-        projectName: updatedProject.projectName
-      }
+        projectName: updatedProject.projectName,
+      },
     };
   }
 
@@ -556,10 +629,10 @@ export class ProjectController {
     @Request() req,
   ) {
     return this.projectService.updateSectorResults(
-      id, 
-      sectorId, 
-      resultsData, 
-      req.user.sub
+      id,
+      sectorId,
+      resultsData,
+      req.user.sub,
     );
   }
 
@@ -577,12 +650,12 @@ export class ProjectController {
         id,
         sectorId,
         req.user.sub,
-        calculateTrayDto
+        calculateTrayDto,
       );
-      
+
       // Encontrar el sector actualizado en el proyecto
-      const sector = project.sectors.find(s => s._id.toString() === sectorId);
-      
+      const sector = project.sectors.find((s) => s._id.toString() === sectorId);
+
       return {
         success: true,
         message: 'Cálculo de bandeja completado exitosamente',
@@ -590,21 +663,24 @@ export class ProjectController {
           projectId: project._id,
           sectorId: sectorId,
           sectorName: sector.sectorName,
-          results: sector.results
-        }
+          results: sector.results,
+        },
       };
     } catch (error) {
       return {
         success: false,
         message: error.message,
-        data: null
+        data: null,
       };
     }
   }
-  
+
   // Endpoint para calcular la bandeja óptima de un proyecto sin sectores (usa el sector "General")
-  @Post(':id/calculate-tray')
-  @ApiOperation({ summary: 'Calculate the optimal tray for a project without sectors (uses the "General" sector)' })
+  @Post(':id/calculate-general-tray')
+  @ApiOperation({
+    summary:
+      'Calculate the optimal tray for a project without sectors (uses the "General" sector)',
+  })
   async calculateGeneralTray(
     @Param('id') id: string,
     @Body() calculateTrayDto: CalculateTrayDto,
@@ -614,27 +690,30 @@ export class ProjectController {
       const project = await this.projectService.calculateGeneralTray(
         id,
         calculateTrayDto,
-        req.user.sub
+        req.user.sub,
       );
-      
+
       // Encontrar el sector "General" actualizado
-      const generalSector = project.sectors.find(s => s.sectorName === 'General');
-      
+      const generalSector = project.sectors.find(
+        (s) => s.sectorName === 'General',
+      );
+
       return {
         success: true,
-        message: 'Cálculo de bandeja completado exitosamente para el sector General',
+        message:
+          'Cálculo de bandeja completado exitosamente para el sector General',
         data: {
           projectId: project._id,
           sectorId: generalSector._id,
           sectorName: 'General',
-          results: generalSector.results
-        }
+          results: generalSector.results,
+        },
       };
     } catch (error) {
       return {
         success: false,
         message: error.message,
-        data: null
+        data: null,
       };
     }
   }
