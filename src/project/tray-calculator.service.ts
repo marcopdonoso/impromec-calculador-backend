@@ -133,8 +133,9 @@ export class TrayCalculatorService {
     } else {
       // Instalación en multicapa - calcular área requerida
       requiredArea = this.calculateRequiredArea(cablesInTray, reservePercentage);
-      // Calculamos el área sin factor de seguridad y sin reserva para incluirlo en los resultados
-      calculatedArea = this.calculateTotalArea(cablesInTray);
+      // Para multicapa, también necesitamos aplicar factores al área calculada
+      // ya que es lo que se usa para seleccionar la bandeja y guardar en resultados
+      calculatedArea = requiredArea;
       
       // Para multicapa, filtramos por área útil
       const suitableTrays = await this.findSuitableTraysForMultiLayer(
