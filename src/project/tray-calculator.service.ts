@@ -38,16 +38,22 @@ export class TrayCalculatorService {
       return {
         moreConvenientOption: null,
         otherRecommendedOptions: [],
+        calculatedLoadInKgM: 0,
+        calculatedAreaInMM2: 0
       } as Results;
     }
 
-    // 1. Calcular el peso total por metro lineal con factor de seguridad
-    const totalWeightPerMeter = this.calculateTotalWeight(cablesInTray);
+    // Paso 1: Calcular el peso total con factor de seguridad
+    const totalWeight = this.calculateTotalWeightWithSafety(cablesInTray);
+    // Guardar el peso calculado (sin factor de seguridad) para incluirlo en los resultados
+    const calculatedLoad = this.calculateTotalWeight(cablesInTray);
 
-    // 2 y 3. Calcular dimensiones según tipo de instalación y aplicar factores
+    // 2 y 3. Calcular dimensiones según tipo de instalación
     let requiredWidth = 0;
     let requiredHeight = 0;
     let requiredArea = 0;
+    // Variable para almacenar el área calculada sin factores de seguridad
+    let calculatedArea = 0;
 
     if (installationLayer === 'singleLayer') {
       // Determinar si la disposición es horizontal o en trébol
@@ -62,6 +68,7 @@ export class TrayCalculatorService {
         );
         requiredWidth = dimensions.width;
         requiredHeight = dimensions.height;
+        calculatedArea = dimensions.width * dimensions.height;
       } else {
         // Instalación en una sola capa - trébol
         const dimensions = this.calculateSingleLayerCloverDimensions(
@@ -71,12 +78,13 @@ export class TrayCalculatorService {
         );
         requiredWidth = dimensions.width;
         requiredHeight = dimensions.height;
+        calculatedArea = dimensions.width * dimensions.height;
       }
       
       // Para una sola capa, filtramos por ancho y alto
       const suitableTrays = await this.findSuitableTraysForSingleLayer(
         trayType,
-        totalWeightPerMeter,
+        totalWeight,
         requiredWidth,
         requiredHeight
       );
@@ -85,6 +93,8 @@ export class TrayCalculatorService {
         return {
           moreConvenientOption: null,
           otherRecommendedOptions: [],
+          calculatedLoadInKgM: calculatedLoad,
+          calculatedAreaInMM2: calculatedArea
         } as Results;
       }
 
@@ -92,20 +102,21 @@ export class TrayCalculatorService {
       return this.selectOptimalTraysForSingleLayer(
         suitableTrays, 
         requiredWidth,
-        requiredHeight
+        requiredHeight,
+        calculatedLoad,
+        calculatedArea
       );
       
     } else {
       // Instalación en multicapa - calcular área requerida
-      requiredArea = this.calculateMultiLayerArea(
-        cablesInTray,
-        reservePercentage
-      );
+      requiredArea = this.calculateRequiredArea(cablesInTray, reservePercentage);
+      // Calculamos el área sin factor de seguridad y sin reserva para incluirlo en los resultados
+      calculatedArea = this.calculateTotalArea(cablesInTray);
       
       // Para multicapa, filtramos por área útil
       const suitableTrays = await this.findSuitableTraysForMultiLayer(
         trayType,
-        totalWeightPerMeter,
+        totalWeight,
         requiredArea
       );
 
@@ -113,13 +124,17 @@ export class TrayCalculatorService {
         return {
           moreConvenientOption: null,
           otherRecommendedOptions: [],
+          calculatedLoadInKgM: calculatedLoad,
+          calculatedAreaInMM2: calculatedArea
         } as Results;
       }
 
       // Seleccionar la bandeja óptima y alternativas para multicapa
       return this.selectOptimalTraysForMultiLayer(
         suitableTrays, 
-        requiredArea
+        requiredArea,
+        calculatedLoad,
+        calculatedArea
       );
     }
   }
@@ -136,14 +151,19 @@ export class TrayCalculatorService {
   }
 
   /**
-   * Calcula el peso total por metro de todos los cables con factor de seguridad
+   * Calcula el peso total de los cables sin factor de seguridad
    */
   private calculateTotalWeight(cablesInTray: CableInTray[]): number {
-    const totalWeight = cablesInTray.reduce((total, cableInTray) => {
-      return total + (cableInTray.cable.weightPerMeterKG * cableInTray.quantity);
+    return cablesInTray.reduce((sum, cable) => {
+      return sum + (cable.cable.weightPerMeterKG * cable.quantity);
     }, 0);
-    
-    return totalWeight * this.WEIGHT_SAFETY_FACTOR;
+  }
+
+  /**
+   * Calcula el peso total de los cables con factor de seguridad
+   */
+  private calculateTotalWeightWithSafety(cablesInTray: CableInTray[]): number {
+    return this.calculateTotalWeight(cablesInTray) * this.WEIGHT_SAFETY_FACTOR;
   }
 
   /**
@@ -155,16 +175,16 @@ export class TrayCalculatorService {
     reservePercentage: number,
   ): { width: number, height: number } {
     // Calcular ancho sumando diámetros por cantidad
-    let totalWidth = cablesInTray.reduce((width, cableInTray) => {
-      return width + (cableInTray.cable.externalDiameterMM * cableInTray.quantity);
+    let totalWidth = cablesInTray.reduce((width, cable) => {
+      return width + (cable.cable.externalDiameterMM * cable.quantity);
     }, 0);
     
     // Aplicar factor de seguridad y reserva al ancho
     totalWidth = totalWidth * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
     
     // Altura = diámetro del cable más grande
-    let maxHeight = Math.max(...cablesInTray.map(cableInTray => 
-      cableInTray.cable.externalDiameterMM
+    let maxHeight = Math.max(...cablesInTray.map(cable => 
+      cable.cable.externalDiameterMM
     ));
     
     // Para escalerilla, añadir altura adicional
@@ -203,8 +223,8 @@ export class TrayCalculatorService {
     totalWidth = totalWidth * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
     
     // Altura = 2 veces el diámetro del cable más grande
-    let maxDiameter = Math.max(...cablesInTray.map(cableInTray => 
-      cableInTray.cable.externalDiameterMM
+    let maxDiameter = Math.max(...cablesInTray.map(cable => 
+      cable.cable.externalDiameterMM
     ));
     let maxHeight = 2 * maxDiameter;
     
@@ -234,19 +254,26 @@ export class TrayCalculatorService {
   }
 
   /**
-   * Calcula el área requerida para instalación multicapa
+   * Calcula el área total que ocupan los cables sin factores ni reserva
    */
-  private calculateMultiLayerArea(
-    cablesInTray: CableInTray[],
-    reservePercentage: number,
-  ): number {
-    // Sumar áreas individuales por cantidad
-    let totalArea = cablesInTray.reduce((area, cableInTray) => {
-      return area + (cableInTray.cable.externalAreaMM2 * cableInTray.quantity);
+  private calculateTotalArea(cablesInTray: CableInTray[]): number {
+    return cablesInTray.reduce((sum, cable) => {
+      return sum + (cable.cable.externalAreaMM2 * cable.quantity);
     }, 0);
+  }
+
+  /**
+   * Calcula el área requerida para la instalación multicapa con reserva
+   */
+  private calculateRequiredArea(cablesInTray: CableInTray[], reservePercentage: number): number {
+    // Calcular el área total que ocupan los cables
+    const totalArea = this.calculateTotalArea(cablesInTray);
     
-    // Aplicar factor de seguridad y reserva
-    return totalArea * this.DIMENSION_SAFETY_FACTOR * (1 + reservePercentage / 100);
+    // Aplicar factor de seguridad y porcentaje de reserva
+    const areaWithSafety = totalArea * this.DIMENSION_SAFETY_FACTOR;
+    const areaWithReserve = areaWithSafety * (1 + reservePercentage / 100);
+    
+    return areaWithReserve;
   }
 
   /**
@@ -324,6 +351,8 @@ export class TrayCalculatorService {
     suitableTrays: CableTray[],
     requiredWidth: number,
     requiredHeight: number,
+    calculatedLoad: number,
+    calculatedArea: number,
   ): Results {
     // Copiar para no modificar la original
     const trayCopies = [...suitableTrays];
@@ -339,7 +368,7 @@ export class TrayCalculatorService {
     });
     
     // Convertir a formato de resultados
-    return this.createResultsFromTrays(trayCopies);
+    return this.createResultsFromTrays(trayCopies, calculatedLoad, calculatedArea);
   }
 
   /**
@@ -348,6 +377,8 @@ export class TrayCalculatorService {
   private selectOptimalTraysForMultiLayer(
     suitableTrays: CableTray[],
     requiredArea: number,
+    calculatedLoad: number,
+    calculatedArea: number,
   ): Results {
     // Copiar para no modificar la original
     const trayCopies = [...suitableTrays];
@@ -365,17 +396,23 @@ export class TrayCalculatorService {
     });
     
     // Convertir a formato de resultados
-    return this.createResultsFromTrays(trayCopies);
+    return this.createResultsFromTrays(trayCopies, calculatedLoad, calculatedArea);
   }
 
   /**
    * Crea el objeto Results a partir de las bandejas seleccionadas
    */
-  private createResultsFromTrays(sortedTrays: CableTray[]): Results {
+  private createResultsFromTrays(
+    sortedTrays: CableTray[], 
+    calculatedLoad: number, 
+    calculatedArea: number
+  ): Results {
     if (sortedTrays.length === 0) {
       return {
         moreConvenientOption: null,
         otherRecommendedOptions: [],
+        calculatedLoadInKgM: calculatedLoad,
+        calculatedAreaInMM2: calculatedArea
       } as Results;
     }
     
@@ -390,43 +427,68 @@ export class TrayCalculatorService {
     return {
       moreConvenientOption: optimalTray,
       otherRecommendedOptions: alternativeTrays,
+      calculatedLoadInKgM: calculatedLoad,
+      calculatedAreaInMM2: calculatedArea
     } as Results;
   }
 
   /**
-   * Mapea una categoría de bandeja del catálogo al formato requerido por el frontend
-   */
-  private mapCategoryToFrontendFormat(catalogCategory: string): TrayCategory {
-    // Mapeo de categorías del catálogo a las categorías del frontend
-    const categoryMap = {
-      'super liviana': 'super-liviana' as TrayCategory,
-      'liviana': 'liviana' as TrayCategory,
-      'semi pesada': 'semi-pesada' as TrayCategory,
-      'pesada': 'pesada' as TrayCategory,
-      'super pesada': 'super-pesada' as TrayCategory
-    };
-    
-    return categoryMap[catalogCategory] || 'liviana' as TrayCategory;
+ * Convierte una bandeja del catálogo a modelo Tray
+ */
+private convertToTrayModel(catalogTray: CableTray): Tray {
+  // Mapear categoría del catálogo al formato esperado por el frontend
+  const categoryMap: Record<string, TrayCategory> = {
+    'super liviana': 'super-liviana',
+    'superliviana': 'super-liviana',
+    'super-liviana': 'super-liviana',
+    'liviana': 'liviana',
+    'semi-pesada': 'semi-pesada',
+    'semi pesada': 'semi-pesada',
+    'semi pesadas': 'semi-pesada',  // Variante encontrada en la base de datos
+    'semipesada': 'semi-pesada',
+    'pesada': 'pesada',
+    'super pesada': 'super-pesada',
+    'superpesada': 'super-pesada',
+    'super-pesada': 'super-pesada'
+  };
+  
+  // Normalizar la categoría entrante (a minúsculas y sin espacios extras)
+  const normalizedCategory = catalogTray.category?.toLowerCase().trim() || '';
+  
+  // Log para depurar qué categoría exacta viene del catálogo
+  console.log(`Categoría original de bandeja: '${catalogTray.category}'`);
+  console.log(`Categoría normalizada: '${normalizedCategory}'`);
+  
+  // Intentar encontrar una coincidencia exacta primero
+  let trayCategory = categoryMap[normalizedCategory];
+  
+  // Si no hay coincidencia exacta, buscar por coincidencia parcial
+  if (!trayCategory) {
+    for (const [key, value] of Object.entries(categoryMap)) {
+      if (normalizedCategory.includes(key) || key.includes(normalizedCategory)) {
+        trayCategory = value;
+        console.log(`Coincidencia parcial encontrada: '${key}' -> '${value}'`);
+        break;
+      }
+    }
   }
-
-  /**
-   * Convierte un modelo CableTray a modelo Tray para resultados, siguiendo la estructura del frontend
-   */
-  private convertToTrayModel(cableTray: CableTray): Tray {
-    // Usamos el ID del documento como ID de la bandeja
-    return {
-      id: cableTray._id.toString(),
-      trayType: cableTray.type as TrayType,
-      trayCategory: this.mapCategoryToFrontendFormat(cableTray.category),
-      technicalDetails: {
-        thicknessInMM: cableTray.thickness,
-        widthInMM: cableTray.width,
-        heightInMM: cableTray.height,
-        loadResistanceInKgM: cableTray.loadCapacity
-      },
-      // Campos adicionales que pueden ser útiles (no requeridos por el frontend)
-      trayName: `${cableTray.type} ${cableTray.width}x${cableTray.height}`,
-      trayDescription: `Bandeja tipo ${cableTray.type}, categoría ${cableTray.category}`
-    } as Tray;
+  
+  // Si aún no hay coincidencia, usar el valor por defecto
+  if (!trayCategory) {
+    console.log('No se encontró coincidencia para la categoría, usando valor por defecto: liviana');
+    trayCategory = 'liviana';
+  }
+  
+  return {
+    id: catalogTray._id.toString(),
+    trayType: catalogTray.type,
+    trayCategory: trayCategory,
+    technicalDetails: {
+      thicknessInMM: catalogTray.thickness,
+      widthInMM: catalogTray.width,
+      heightInMM: catalogTray.height,
+      loadResistanceInKgM: catalogTray.loadCapacity
+    }
+  } as Tray;
   }
 }

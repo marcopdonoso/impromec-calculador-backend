@@ -113,14 +113,24 @@ export class ProjectController {
     };
     
     if (isNonSectoredProject) {
-      // Para proyectos sin sectores, incluir información sobre el sector por defecto
-      // y sus cables directamente en el objeto del proyecto
+      // Para proyectos sin sectores, incluir información básica del sector por defecto para referencia
+      // y colocar la configuración y resultados directamente en el objeto del proyecto
       const defaultSector = project.sectors[0];
+      
+      // Incluir ID y nombre del sector por defecto para referencia
       response.project['defaultSector'] = {
         id: defaultSector._id,
         sectorName: defaultSector.sectorName
       };
       
+      // Colocar configuración y resultados directamente en el objeto del proyecto
+      response.project['trayTypeSelection'] = defaultSector.trayTypeSelection;
+      response.project['reservePercentage'] = defaultSector.reservePercentage;
+      response.project['installationLayerSelection'] = defaultSector.installationLayerSelection;
+      response.project['cablesCount'] = defaultSector.cablesInTray ? defaultSector.cablesInTray.length : 0;
+      response.project['results'] = defaultSector.results;
+      
+      // Incluir los cables directamente en el objeto del proyecto
       if (defaultSector.cablesInTray && defaultSector.cablesInTray.length > 0) {
         response.project['cables'] = defaultSector.cablesInTray.map(cable => ({
           id: cable._id,
