@@ -125,10 +125,22 @@ export class ProjectService {
       );
     }
 
+    // Verificar si algún parámetro que afecta al cálculo está siendo actualizado
+    const calculationAffectingParams = ['trayTypeSelection', 'reservePercentage', 'installationLayerSelection'];
+    const needsResultsReset = Object.keys(updateSectorDto).some(key => 
+      calculationAffectingParams.includes(key)
+    );
+    
     // Actualizar solo los campos proporcionados
     Object.keys(updateSectorDto).forEach((key) => {
       project.sectors[sectorIndex][key] = updateSectorDto[key];
     });
+    
+    // Si se actualiza algún parámetro que afecta al cálculo, invalidar los resultados
+    if (needsResultsReset) {
+      console.log(`Invalidando resultados para sector ${sectorId} por actualización de parámetros`);
+      project.sectors[sectorIndex].results = null;
+    }
 
     return project.save();
   }
@@ -167,7 +179,13 @@ export class ProjectService {
       project.sectors[sectorIndex].cablesInTray = [];
     }
 
+    // Añadir el nuevo cable
     project.sectors[sectorIndex].cablesInTray.push(cableData);
+    
+    // Invalidar resultados ya que se ha añadido un cable nuevo
+    console.log(`Invalidando resultados para sector ${sectorId} por adición de cable`);
+    project.sectors[sectorIndex].results = null;
+    
     return project.save();
   }
 
@@ -199,11 +217,23 @@ export class ProjectService {
       );
     }
 
+    // Verificar si se está modificando algún parámetro que afecte al cálculo
+    const calculationAffectingParams = ['cable', 'quantity', 'arrangement'];
+    const needsResultsReset = Object.keys(cableData).some(key => 
+      calculationAffectingParams.includes(key)
+    );
+
     // Actualizar solo los campos proporcionados
     Object.keys(cableData).forEach((key) => {
       project.sectors[sectorIndex].cablesInTray[cableIndex][key] =
         cableData[key];
     });
+    
+    // Si se actualiza algún parámetro que afecta al cálculo, invalidar los resultados
+    if (needsResultsReset) {
+      console.log(`Invalidando resultados para sector ${sectorId} por actualización de cable`);
+      project.sectors[sectorIndex].results = null;
+    }
 
     return project.save();
   }
@@ -225,9 +255,20 @@ export class ProjectService {
       );
     }
 
+    // Verificar si el cable existe antes de eliminarlo
+    const cableExists = project.sectors[sectorIndex].cablesInTray.some(
+      (c) => c._id.toString() === cableId
+    );
+
     project.sectors[sectorIndex].cablesInTray = project.sectors[
       sectorIndex
     ].cablesInTray.filter((c) => c._id.toString() !== cableId);
+    
+    // Si el cable existía y fue eliminado, invalidar resultados
+    if (cableExists) {
+      console.log(`Invalidando resultados para sector ${sectorId} por eliminación de cable`);
+      project.sectors[sectorIndex].results = null;
+    }
 
     return project.save();
   }
