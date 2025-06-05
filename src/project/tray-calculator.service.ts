@@ -400,6 +400,7 @@ export class TrayCalculatorService {
 
   /**
    * Selecciona la bandeja óptima y alternativas para instalación en una sola capa
+   * Ordena por capacidad de carga (menor a mayor) para evitar sobredimensionamiento
    */
   private selectOptimalTraysForSingleLayer(
     suitableTrays: CableTray[],
@@ -411,15 +412,9 @@ export class TrayCalculatorService {
     // Copiar para no modificar la original
     const trayCopies = [...suitableTrays];
     
-    // Ordenar primero por altura (menor a mayor)
-    trayCopies.sort((a, b) => a.height - b.height);
-    
-    // Luego ordenar por margen de ancho (menor sobredimensionamiento)
-    trayCopies.sort((a, b) => {
-      const marginA = a.width / requiredWidth - 1;
-      const marginB = b.width / requiredWidth - 1;
-      return marginA - marginB;
-    });
+    // Ordenar por capacidad de carga (menor a mayor)
+    // para seleccionar la bandeja con menor capacidad que cumpla los requisitos
+    trayCopies.sort((a, b) => a.loadCapacity - b.loadCapacity);
     
     // Convertir a formato de resultados
     return this.createResultsFromTrays(trayCopies, calculatedLoad, calculatedArea);
@@ -427,6 +422,7 @@ export class TrayCalculatorService {
 
   /**
    * Selecciona la bandeja óptima y alternativas para instalación multicapa
+   * Ordena por capacidad de carga (menor a mayor) para evitar sobredimensionamiento
    */
   private selectOptimalTraysForMultiLayer(
     suitableTrays: CableTray[],
@@ -437,17 +433,9 @@ export class TrayCalculatorService {
     // Copiar para no modificar la original
     const trayCopies = [...suitableTrays];
     
-    // Ordenar primero por altura (menor a mayor)
-    trayCopies.sort((a, b) => a.height - b.height);
-    
-    // Luego ordenar por margen de área útil (menor sobredimensionamiento)
-    trayCopies.sort((a, b) => {
-      const usefulAreaA = this.calculateUsefulArea(a);
-      const usefulAreaB = this.calculateUsefulArea(b);
-      const marginA = usefulAreaA / requiredArea - 1;
-      const marginB = usefulAreaB / requiredArea - 1;
-      return marginA - marginB;
-    });
+    // Ordenar por capacidad de carga (menor a mayor)
+    // para seleccionar la bandeja con menor capacidad que cumpla los requisitos
+    trayCopies.sort((a, b) => a.loadCapacity - b.loadCapacity);
     
     // Convertir a formato de resultados
     return this.createResultsFromTrays(trayCopies, calculatedLoad, calculatedArea);
