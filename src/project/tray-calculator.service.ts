@@ -434,7 +434,7 @@ export class TrayCalculatorService {
 
   /**
    * Selecciona la bandeja óptima y alternativas para instalación en una sola capa
-   * Ordena por capacidad de carga (menor a mayor) para evitar sobredimensionamiento
+   * Ordena por criterios económicos: espesor, altura y ancho (menor a mayor)
    */
   private selectOptimalTraysForSingleLayer(
     suitableTrays: CableTray[],
@@ -446,9 +446,21 @@ export class TrayCalculatorService {
     // Copiar para no modificar la original
     const trayCopies = [...suitableTrays];
 
-    // Ordenar por capacidad de carga (menor a mayor)
-    // para seleccionar la bandeja con menor capacidad que cumpla los requisitos
-    trayCopies.sort((a, b) => a.loadCapacity - b.loadCapacity);
+    // Ordenamiento compuesto: primero por espesor, luego por altura, luego por ancho
+    trayCopies.sort((a, b) => {
+      // Comparar por espesor primero
+      if (a.thickness !== b.thickness) {
+        return a.thickness - b.thickness;
+      }
+      
+      // Si el espesor es igual, comparar por altura
+      if (a.height !== b.height) {
+        return a.height - b.height;
+      }
+      
+      // Si la altura también es igual, comparar por ancho
+      return a.width - b.width;
+    });
 
     // Convertir a formato de resultados
     return this.createResultsFromTrays(
@@ -460,7 +472,7 @@ export class TrayCalculatorService {
 
   /**
    * Selecciona la bandeja óptima y alternativas para instalación multicapa
-   * Ordena por capacidad de carga (menor a mayor) para evitar sobredimensionamiento
+   * Ordena por criterios económicos: espesor, altura y ancho (menor a mayor)
    */
   private selectOptimalTraysForMultiLayer(
     suitableTrays: CableTray[],
@@ -471,9 +483,21 @@ export class TrayCalculatorService {
     // Copiar para no modificar la original
     const trayCopies = [...suitableTrays];
 
-    // Ordenar por capacidad de carga (menor a mayor)
-    // para seleccionar la bandeja con menor capacidad que cumpla los requisitos
-    trayCopies.sort((a, b) => a.loadCapacity - b.loadCapacity);
+    // Ordenamiento compuesto: primero por espesor, luego por altura, luego por ancho
+    trayCopies.sort((a, b) => {
+      // Comparar por espesor primero
+      if (a.thickness !== b.thickness) {
+        return a.thickness - b.thickness;
+      }
+      
+      // Si el espesor es igual, comparar por altura
+      if (a.height !== b.height) {
+        return a.height - b.height;
+      }
+      
+      // Si la altura también es igual, comparar por ancho
+      return a.width - b.width;
+    });
 
     // Convertir a formato de resultados
     return this.createResultsFromTrays(
