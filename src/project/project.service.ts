@@ -19,6 +19,43 @@ export class ProjectService {
     @InjectModel(Project.name) private projectModel: Model<Project>,
     private readonly trayCalculatorService: TrayCalculatorService,
   ) {}
+  
+  /**
+   * Método helper para invalidar el reporte de cálculo de un proyecto
+   * @param projectId ID del proyecto
+   * @private
+   */
+  private async invalidateCalculationReport(projectId: string): Promise<void> {
+    await this.projectModel.findByIdAndUpdate(
+      projectId,
+      { calculationReport: null }
+    ).exec();
+  }
+  
+  /**
+   * Actualiza el reporte de cálculo de un proyecto
+   * @param projectId ID del proyecto
+   * @param reportData Datos del reporte (URL y ID del archivo)
+   * @param userId ID del usuario (para verificar permisos)
+   * @returns Proyecto actualizado
+   */
+  async updateCalculationReport(
+    projectId: string, 
+    reportData: { url: string; fileId: string },
+    userId: string,
+  ): Promise<Project> {
+    const project = await this.findOne(projectId, userId);
+    
+    if (!project) {
+      throw new NotFoundException('Proyecto no encontrado');
+    }
+    
+    return this.projectModel.findByIdAndUpdate(
+      projectId,
+      { calculationReport: reportData },
+      { new: true }
+    ).exec();
+  }
 
   async create(
     createProjectDto: CreateProjectDto,
@@ -105,6 +142,7 @@ export class ProjectService {
     };
 
     project.sectors.push(sectorData as any);
+    await this.invalidateCalculationReport(projectId);
     return project.save();
   }
 
@@ -140,6 +178,7 @@ export class ProjectService {
     if (needsResultsReset) {
       console.log(`Invalidando resultados para sector ${sectorId} por actualización de parámetros`);
       project.sectors[sectorIndex].results = null;
+      await this.invalidateCalculationReport(projectId);
     }
 
     return project.save();
@@ -154,6 +193,7 @@ export class ProjectService {
     project.sectors = project.sectors.filter(
       (s) => s._id.toString() !== sectorId,
     );
+    await this.invalidateCalculationReport(projectId);
     return project.save();
   }
 
@@ -185,6 +225,7 @@ export class ProjectService {
     // Invalidar resultados ya que se ha añadido un cable nuevo
     console.log(`Invalidando resultados para sector ${sectorId} por adición de cable`);
     project.sectors[sectorIndex].results = null;
+    await this.invalidateCalculationReport(projectId);
     
     return project.save();
   }
@@ -233,6 +274,7 @@ export class ProjectService {
     if (needsResultsReset) {
       console.log(`Invalidando resultados para sector ${sectorId} por actualización de cable`);
       project.sectors[sectorIndex].results = null;
+      await this.invalidateCalculationReport(projectId);
     }
 
     return project.save();
@@ -268,6 +310,7 @@ export class ProjectService {
     if (cableExists) {
       console.log(`Invalidando resultados para sector ${sectorId} por eliminación de cable`);
       project.sectors[sectorIndex].results = null;
+      await this.invalidateCalculationReport(projectId);
     }
 
     return project.save();

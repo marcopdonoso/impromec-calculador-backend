@@ -91,6 +91,7 @@ export class ProjectController {
         id: projectObj._id,
         projectName: projectObj.projectName,
         hasSectors: !isNonSectoredProject,
+        calculationReport: project.calculationReport,
         sectorsCount: isNonSectoredProject ? 0 : projectObj.sectors.length,
         createdAt: projectObj.createdAt,
         updatedAt: projectObj.updatedAt,
@@ -122,6 +123,7 @@ export class ProjectController {
         projectCompany: project.projectCompany,
         projectLocation: project.projectLocation,
         hasSectors: !isNonSectoredProject,
+        calculationReport: project.calculationReport,
         // Nota: MongoDB agrega automáticamente createdAt y updatedAt, pero TypeScript no los reconoce
         // Si necesitas estas propiedades, considera agregarlas al esquema o usar una aserción de tipo
       },
@@ -212,6 +214,25 @@ export class ProjectController {
     return {
       success: true,
       message: 'Proyecto eliminado exitosamente',
+    };
+  }
+
+  @Patch(':id/calculation-report')
+  @ApiOperation({ summary: 'Update calculation report for a project' })
+  async updateCalculationReport(
+    @Param('id') id: string,
+    @Body() reportData: { url: string; fileId: string },
+    @Request() req,
+  ) {
+    const updatedProject = await this.projectService.updateCalculationReport(
+      id,
+      reportData,
+      req.user.sub,
+    );
+    return {
+      success: true,
+      message: 'Reporte de cálculo actualizado exitosamente',
+      project: updatedProject,
     };
   }
 

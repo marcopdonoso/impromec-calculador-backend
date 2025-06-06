@@ -17,6 +17,15 @@ export class Project extends Document {
   @Prop({ type: [SectorSchema], default: [] })
   sectors: Sector[];
 
+  @Prop({ 
+    type: {
+      url: String,
+      fileId: String
+    }, 
+    default: null 
+  })
+  calculationReport: { url: string; fileId: string } | null;
+
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   user: User;
 }
