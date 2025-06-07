@@ -237,16 +237,63 @@ export class ProjectController {
       req.user.sub,
     );
     
-    // Añadir campos adicionales como hasSectors para consistencia con GET by id
-    const projectResponse = {
-      ...updatedProject.toObject(),
-      hasSectors: updatedProject.sectors && updatedProject.sectors.length > 0,
+    // Usar exactamente la misma transformación de datos que en el método findOne
+    // para mantener consistencia total en las respuestas
+    
+    // Determinar si es un proyecto sin sectores personalizados
+    const isNonSectoredProject =
+      updatedProject.sectors.length === 1 &&
+      updatedProject.sectors[0].sectorName === 'General';
+      
+    // Crear el objeto de respuesta base con la misma estructura que GET
+    const projectObj = {
+      id: updatedProject._id,
+      projectName: updatedProject.projectName,
+      projectCompany: updatedProject.projectCompany,
+      projectLocation: updatedProject.projectLocation,
+      hasSectors: !isNonSectoredProject,
+      calculationReport: updatedProject.calculationReport,
     };
+    
+    // Añadir datos adicionales para proyectos sin sectores personalizados
+    if (isNonSectoredProject) {
+      const defaultSector = updatedProject.sectors[0];
+      Object.assign(projectObj, {
+        defaultSector: {
+          id: defaultSector._id,
+          sectorName: defaultSector.sectorName,
+        },
+        trayTypeSelection: defaultSector.trayTypeSelection,
+        reservePercentage: defaultSector.reservePercentage,
+        installationLayerSelection: defaultSector.installationLayerSelection,
+        cablesCount: defaultSector.cablesInTray?.length || 0,
+        results: defaultSector.results,
+        cables: defaultSector.cablesInTray?.map(c => ({
+          id: c._id,
+          cable: c.cable,
+          quantity: c.quantity,
+          arrangement: c.arrangement,
+        })),
+      });
+    } else {
+      // Para proyectos con sectores personalizados, incluir los sectores como array
+      Object.assign(projectObj, {
+        sectors: updatedProject.sectors.map(s => ({
+          id: s._id,
+          sectorName: s.sectorName,
+          trayTypeSelection: s.trayTypeSelection,
+          reservePercentage: s.reservePercentage,
+          installationLayerSelection: s.installationLayerSelection,
+          cablesCount: s.cablesInTray?.length || 0,
+          results: s.results,
+        })),
+      });
+    }
     
     return {
       success: true,
       message: 'Reporte de cálculo actualizado exitosamente',
-      project: projectResponse,
+      project: projectObj,
     };
   }
   
