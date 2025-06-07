@@ -178,9 +178,25 @@ export class ProjectService {
   }
 
   async remove(id: string, userId: string): Promise<void> {
+    // Primero obtenemos el proyecto para ver si tiene reporte de cálculo
+    const project = await this.findOne(id, userId);
+    
+    // Si el proyecto tiene un reporte de cálculo con fileId, eliminamos el documento de PDF Monkey
+    if (project.calculationReport?.fileId) {
+      try {
+        this.logger.log(`Eliminando documento PDF Monkey ${project.calculationReport.fileId} al borrar proyecto ${id}`);
+        await this.pdfMonkeyService.deleteDocument(project.calculationReport.fileId);
+      } catch (error) {
+        // Solo registramos el error pero continuamos con la eliminación del proyecto
+        this.logger.error(`Error al eliminar documento PDF Monkey ${project.calculationReport.fileId}: ${error.message}`);
+      }
+    }
+    
+    // Ahora eliminamos el proyecto
     const result = await this.projectModel
       .deleteOne({ _id: id, user: userId })
       .exec();
+      
     if (result.deletedCount === 0) {
       throw new NotFoundException(`Project with ID ${id} not found`);
     }

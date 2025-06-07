@@ -3,14 +3,14 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
+  HttpStatus,
   NotFoundException,
   Param,
   Patch,
   Post,
   Request,
   UseGuards,
-  HttpException,
-  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -20,14 +20,14 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CalculateTrayDto } from './dto/calculate-tray.dto';
+import { CalculationReportDto } from './dto/calculation-report.dto';
 import { CreateCableInTrayDto } from './dto/create-cable.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateSectorDto } from './dto/create-sector.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { UpdateSectorDto } from './dto/update-sector.dto';
-import { CalculationReportDto } from './dto/calculation-report.dto';
-import { ProjectService } from './project.service';
 import { PdfMonkeyService } from './pdf-monkey.service';
+import { ProjectService } from './project.service';
 
 @ApiTags('projects')
 @Controller('projects')
@@ -144,12 +144,15 @@ export class ProjectController {
         id: defaultSector._id,
         sectorName: defaultSector.sectorName,
       };
-      
+
       // Incluir parámetros de bandeja y resultados directamente en el proyecto
       response.project['trayTypeSelection'] = defaultSector.trayTypeSelection;
       response.project['reservePercentage'] = defaultSector.reservePercentage;
-      response.project['installationLayerSelection'] = defaultSector.installationLayerSelection;
-      response.project['cablesCount'] = defaultSector.cablesInTray ? defaultSector.cablesInTray.length : 0;
+      response.project['installationLayerSelection'] =
+        defaultSector.installationLayerSelection;
+      response.project['cablesCount'] = defaultSector.cablesInTray
+        ? defaultSector.cablesInTray.length
+        : 0;
       response.project['results'] = defaultSector.results;
 
       if (defaultSector.cablesInTray && defaultSector.cablesInTray.length > 0) {
@@ -236,15 +239,15 @@ export class ProjectController {
       reportData,
       req.user.sub,
     );
-    
+
     // Usar exactamente la misma transformación de datos que en el método findOne
     // para mantener consistencia total en las respuestas
-    
+
     // Determinar si es un proyecto sin sectores personalizados
     const isNonSectoredProject =
       updatedProject.sectors.length === 1 &&
       updatedProject.sectors[0].sectorName === 'General';
-      
+
     // Crear el objeto de respuesta base con la misma estructura que GET
     const projectObj = {
       id: updatedProject._id,
@@ -254,7 +257,7 @@ export class ProjectController {
       hasSectors: !isNonSectoredProject,
       calculationReport: updatedProject.calculationReport,
     };
-    
+
     // Añadir datos adicionales para proyectos sin sectores personalizados
     if (isNonSectoredProject) {
       const defaultSector = updatedProject.sectors[0];
@@ -268,7 +271,7 @@ export class ProjectController {
         installationLayerSelection: defaultSector.installationLayerSelection,
         cablesCount: defaultSector.cablesInTray?.length || 0,
         results: defaultSector.results,
-        cables: defaultSector.cablesInTray?.map(c => ({
+        cables: defaultSector.cablesInTray?.map((c) => ({
           id: c._id,
           cable: c.cable,
           quantity: c.quantity,
@@ -278,7 +281,7 @@ export class ProjectController {
     } else {
       // Para proyectos con sectores personalizados, incluir los sectores como array
       Object.assign(projectObj, {
-        sectors: updatedProject.sectors.map(s => ({
+        sectors: updatedProject.sectors.map((s) => ({
           id: s._id,
           sectorName: s.sectorName,
           trayTypeSelection: s.trayTypeSelection,
@@ -286,17 +289,23 @@ export class ProjectController {
           installationLayerSelection: s.installationLayerSelection,
           cablesCount: s.cablesInTray?.length || 0,
           results: s.results,
+          cables: s.cablesInTray?.map((c) => ({
+            id: c._id,
+            cable: c.cable,
+            quantity: c.quantity,
+            arrangement: c.arrangement,
+          })),
         })),
       });
     }
-    
+
     return {
       success: true,
       message: 'Reporte de cálculo actualizado exitosamente',
       project: projectObj,
     };
   }
-  
+
   @Get(':id/calculation-report/download-url')
   @ApiOperation({ summary: 'Get fresh download URL for calculation report' })
   async getCalculationReportDownloadUrl(
@@ -304,44 +313,47 @@ export class ProjectController {
     @Request() req,
   ) {
     const project = await this.projectService.findOne(id, req.user.sub);
-    
+
     if (!project.calculationReport?.fileId) {
       // Usar el mismo formato de respuesta que cuando el documento no existe en PDF Monkey
       throw new HttpException(
         {
           success: false,
           message: 'No hay reporte de cálculo disponible para este proyecto',
-          needsRegeneration: true
+          needsRegeneration: true,
         },
-        HttpStatus.NOT_FOUND
+        HttpStatus.NOT_FOUND,
       );
     }
-    
+
     try {
       const freshUrl = await this.pdfMonkeyService.generateDownloadUrl(
-        project.calculationReport.fileId
+        project.calculationReport.fileId,
       );
-      
+
       return {
         success: true,
         url: freshUrl,
-        expiresIn: '1 hour'
+        expiresIn: '1 hour',
       };
     } catch (error) {
       // Si hay error, invalidar el reporte para que se regenere
-      console.log(`Error al obtener URL para reporte ${project.calculationReport.fileId}:`, error.message);
-      
+      console.log(
+        `Error al obtener URL para reporte ${project.calculationReport.fileId}:`,
+        error.message,
+      );
+
       // Invalidar el reporte en la base de datos
       await this.projectService.resetCalculationReport(id, req.user.sub);
-      
+
       // Devolver mensaje adecuado al frontend
       throw new HttpException(
         {
           success: false,
           message: 'El reporte ya no está disponible y debe ser regenerado',
-          needsRegeneration: true
+          needsRegeneration: true,
         },
-        HttpStatus.NOT_FOUND
+        HttpStatus.NOT_FOUND,
       );
     }
   }
