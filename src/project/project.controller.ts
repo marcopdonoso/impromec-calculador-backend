@@ -9,6 +9,8 @@ import {
   Post,
   Request,
   UseGuards,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,14 +25,19 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateSectorDto } from './dto/create-sector.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { UpdateSectorDto } from './dto/update-sector.dto';
+import { CalculationReportDto } from './dto/calculation-report.dto';
 import { ProjectService } from './project.service';
+import { PdfMonkeyService } from './pdf-monkey.service';
 
 @ApiTags('projects')
 @Controller('projects')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class ProjectController {
-  constructor(private readonly projectService: ProjectService) {}
+  constructor(
+    private readonly projectService: ProjectService,
+    private readonly pdfMonkeyService: PdfMonkeyService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new project' })
@@ -221,7 +228,7 @@ export class ProjectController {
   @ApiOperation({ summary: 'Update calculation report for a project' })
   async updateCalculationReport(
     @Param('id') id: string,
-    @Body() reportData: { url: string; fileId: string },
+    @Body() reportData: CalculationReportDto,
     @Request() req,
   ) {
     const updatedProject = await this.projectService.updateCalculationReport(
@@ -229,11 +236,67 @@ export class ProjectController {
       reportData,
       req.user.sub,
     );
+    
+    // Añadir campos adicionales como hasSectors para consistencia con GET by id
+    const projectResponse = {
+      ...updatedProject.toObject(),
+      hasSectors: updatedProject.sectors && updatedProject.sectors.length > 0,
+    };
+    
     return {
       success: true,
       message: 'Reporte de cálculo actualizado exitosamente',
-      project: updatedProject,
+      project: projectResponse,
     };
+  }
+  
+  @Get(':id/calculation-report/download-url')
+  @ApiOperation({ summary: 'Get fresh download URL for calculation report' })
+  async getCalculationReportDownloadUrl(
+    @Param('id') id: string,
+    @Request() req,
+  ) {
+    const project = await this.projectService.findOne(id, req.user.sub);
+    
+    if (!project.calculationReport?.fileId) {
+      // Usar el mismo formato de respuesta que cuando el documento no existe en PDF Monkey
+      throw new HttpException(
+        {
+          success: false,
+          message: 'No hay reporte de cálculo disponible para este proyecto',
+          needsRegeneration: true
+        },
+        HttpStatus.NOT_FOUND
+      );
+    }
+    
+    try {
+      const freshUrl = await this.pdfMonkeyService.generateDownloadUrl(
+        project.calculationReport.fileId
+      );
+      
+      return {
+        success: true,
+        url: freshUrl,
+        expiresIn: '1 hour'
+      };
+    } catch (error) {
+      // Si hay error, invalidar el reporte para que se regenere
+      console.log(`Error al obtener URL para reporte ${project.calculationReport.fileId}:`, error.message);
+      
+      // Invalidar el reporte en la base de datos
+      await this.projectService.resetCalculationReport(id, req.user.sub);
+      
+      // Devolver mensaje adecuado al frontend
+      throw new HttpException(
+        {
+          success: false,
+          message: 'El reporte ya no está disponible y debe ser regenerado',
+          needsRegeneration: true
+        },
+        HttpStatus.NOT_FOUND
+      );
+    }
   }
 
   // Endpoints para manejar sectores

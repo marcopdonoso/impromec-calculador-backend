@@ -19,12 +19,11 @@ export class Project extends Document {
 
   @Prop({ 
     type: {
-      url: String,
       fileId: String
     }, 
     default: null 
   })
-  calculationReport: { url: string; fileId: string } | null;
+  calculationReport: { fileId: string } | null;
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   user: User;

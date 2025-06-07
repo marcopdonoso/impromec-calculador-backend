@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -10,22 +11,46 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateSectorDto } from './dto/create-sector.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { UpdateSectorDto } from './dto/update-sector.dto';
+import { PdfMonkeyService } from './pdf-monkey.service';
 import { Project } from './schemas/project.schema';
 import { TrayCalculatorService } from './tray-calculator.service';
 
 @Injectable()
 export class ProjectService {
+  private readonly logger = new Logger(ProjectService.name);
+
   constructor(
     @InjectModel(Project.name) private projectModel: Model<Project>,
+    private readonly pdfMonkeyService: PdfMonkeyService,
     private readonly trayCalculatorService: TrayCalculatorService,
   ) {}
-  
+
   /**
    * Método helper para invalidar el reporte de cálculo de un proyecto
    * @param projectId ID del proyecto
    * @private
    */
   private async invalidateCalculationReport(projectId: string): Promise<void> {
+    const project = await this.projectModel.findById(projectId).exec();
+    
+    // Si hay un reporte existente con fileId, intentar eliminarlo de PDF Monkey
+    if (project?.calculationReport?.fileId) {
+      try {
+        const fileId = project.calculationReport.fileId;
+        const deleted = await this.pdfMonkeyService.deleteDocument(fileId);
+        if (deleted) {
+          this.logger.log(`Documento ${fileId} eliminado de PDF Monkey para proyecto ${projectId}`);
+        }
+      } catch (error) {
+        // No interrumpimos el proceso por un error en la eliminación
+        this.logger.error(
+          `Error al eliminar documento de PDF Monkey: ${error.message}`,
+          error.stack
+        );
+      }
+    }
+    
+    // Invalidar reporte en la base de datos
     await this.projectModel.findByIdAndUpdate(
       projectId,
       { calculationReport: null }
@@ -33,15 +58,55 @@ export class ProjectService {
   }
   
   /**
+   * Invalida el reporte de cálculo de un proyecto estableciéndolo a null
+   * y elimina el documento asociado en PDF Monkey
+   * @param projectId ID del proyecto
+   * @param userId ID del usuario (para verificar permisos)
+   * @returns Proyecto actualizado
+   */
+  async resetCalculationReport(
+    projectId: string,
+    userId: string,
+  ): Promise<Project> {
+    // Verificar permisos
+    const project = await this.findOne(projectId, userId);
+    
+    // Si hay un reporte existente con fileId, intentar eliminarlo de PDF Monkey
+    if (project.calculationReport?.fileId) {
+      try {
+        const fileId = project.calculationReport.fileId;
+        const deleted = await this.pdfMonkeyService.deleteDocument(fileId);
+        if (deleted) {
+          this.logger.log(`Documento ${fileId} eliminado de PDF Monkey para proyecto ${projectId}`);
+        }
+      } catch (error) {
+        // No queremos que un error en la eliminación del documento impida
+        // la invalidación del reporte en nuestra base de datos
+        this.logger.error(
+          `Error al eliminar documento de PDF Monkey: ${error.message}`,
+          error.stack
+        );
+      }
+    }
+    
+    // Invalidar reporte
+    return this.projectModel.findByIdAndUpdate(
+      projectId,
+      { calculationReport: null },
+      { new: true }
+    ).exec();
+  }
+  
+  /**
    * Actualiza el reporte de cálculo de un proyecto
    * @param projectId ID del proyecto
-   * @param reportData Datos del reporte (URL y ID del archivo)
+   * @param reportData Datos del reporte (ID del archivo)
    * @param userId ID del usuario (para verificar permisos)
    * @returns Proyecto actualizado
    */
   async updateCalculationReport(
     projectId: string, 
-    reportData: { url: string; fileId: string },
+    reportData: { fileId: string },
     userId: string,
   ): Promise<Project> {
     const project = await this.findOne(projectId, userId);
